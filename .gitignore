@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.venv*/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Data, databases, and generated artifacts
+data/raw/
+data/interim/
+data/processed/
+data/splits/
+dataset/
+*.csv
+*.parquet
+*.db
+*.sqlite
+*.sqlite3
+models/
+*.pkl
+*.joblib
+generated/
+charts/
+reports/
+
+# Unlicensed local reference snapshot (not first-party source)
+Fraud Detection/
+Credit-Card-Fraud-Detection/
+
+# Local services and LLM state
+chroma_db/
+.chroma/
+.ollama/
+neo4j/data/
+neo4j/logs/
+
+# Frontend
+node_modules/
+frontend/dist/
+.vite/
+
+# IDE and operating system
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Keep tiny committed fixtures
+!data/fixtures/
+!data/fixtures/**
+!backend/tests/fixtures/
+!backend/tests/fixtures/**
