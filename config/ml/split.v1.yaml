@@ -1,0 +1,9 @@
+version: ulb_split.v1
+seed: 42
+train_ratio: 0.70
+validation_ratio: 0.15
+test_ratio: 0.15
+expected_rows: 284807
+expected_fraud_rows: 492
+expected_sha256: 76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89
+grouping: exact_match_all_30_non_label_columns

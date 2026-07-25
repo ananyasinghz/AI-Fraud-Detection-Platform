@@ -1,12 +1,12 @@
 # AI-Powered Suspicious Activity Detection Platform
 
-## Architecture Baseline
+## Part 10 — Final Recommended Enterprise AI Architecture, Revision 2
 
-**Status:** Phase 0 architecture baseline  
+**Status:** Authoritative implementation architecture  
 **Contract version:** `v1`  
 **Last reconciled:** 2026-07-25
 
-The original “Part 10 — Final Recommended Enterprise AI Architecture” was referenced in planning but was not supplied as a workspace file when Phase 0 began. This document therefore records the architecture that is verifiably supported by the corrected implementation roadmap. It is not represented as a verbatim copy of the missing source. If that source is supplied later, it must be compared against this file and conflicts resolved through a versioned architecture decision.
+This workspace document records the implementation-relevant form of the user-supplied “Part 10 — Final Recommended Enterprise AI Architecture (Implementation Blueprint), Revision 2.” The strict Phase 0 contracts remain authoritative where the document's abbreviated JSON examples omitted safety fields: raw `AnalysisRequest` and parsed intent remain separate, plan dependencies use unique step IDs, and tool results retain operation, timestamp, evidence, error, and provenance fields. The required execution `route` is part of contract `v1`.
 
 ## Architectural Principles
 
@@ -18,20 +18,27 @@ The original “Part 10 — Final Recommended Enterprise AI Architecture” was 
 6. **Graceful degradation:** deterministic routes and templates remain usable when the local LLM is unavailable.
 7. **Honest evaluation:** card-fraud benchmarking and synthetic AML-typology evaluation are separate tracks.
 
+Every natural-language query normally uses one small intent-parsing LLM call. “SQL-only” and “feature-only” mean zero additional planning/explanation LLM calls and zero LLM involvement in the numerical decision, not literally zero total calls. Deterministic parsing templates provide the no-LLM fallback.
+
 ## Logical Layers
 
 ```text
 User/API
   │
   ▼
-Intent Extraction ──► Deterministic Router
-  │                         │
-  │ direct template        │ complex request
-  ▼                         ▼
-Validated Plan ◄──── Planner + Plan Validator
+Intent Extraction
   │
   ▼
-Investigation State Graph
+Date/Filter Normalization → Query Scope Resolver
+  │
+  ▼
+Deterministic Three-Way Router
+  ├── Simple SQL ───────────────────────────────────────────────┐
+  ├── Feature-Only ─────────────────────────────────────────────┤
+  └── Complex → Planner + Plan Validator                        │
+                              │                                  │
+                              ▼                                  │
+                    Investigation State Graph                    │
   ├── Targeted SQL Tool
   ├── EDA Tool
   ├── Feature Engineering Tool
@@ -41,18 +48,25 @@ Investigation State Graph
   │     └── optional supervised ML scorer
   ├── Graph Analysis Tool (optional)
   └── Retrieval Tool (optional)
-  │
-  ▼
-Evidence Aggregation
-  │
-  ▼
-Risk Classification → Verification → Escalation
-  │
-  ▼
-Grounded Explanation
-  │
-  ▼
-Execution Summary + Findings + Evidence + Charts + Alert
+                              │                                  │
+                              ▼                                  │
+                    Evidence Aggregation                         │
+                              │                                  │
+                              ▼                                  │
+                    Evidence Verification                        │
+                              │                                  │
+                              ▼                                  │
+                    Risk Classification                          │
+                              │                                  │
+                              ▼                                  │
+                    Risk Consistency Check                       │
+                              │                                  │
+                              ▼                                  │
+                    Escalation → Grounded Explanation             │
+                              │                                  │
+                              └──────────────────────────────────┤
+                                                                 ▼
+                         Execution Summary + Results + Charts + Alerts
 ```
 
 ## Required Capabilities
@@ -80,12 +94,13 @@ Produces concise natural-language explanations from verified evidence only. Dete
 ## Supporting Components
 
 - **Targeted SQL Tool:** direct lookup, filtering, and threshold aggregation.
-- **Router:** deterministic mapping for common/simple intents.
+- **Router:** deterministic three-way mapping to SQL-only, feature-only, or full investigation.
 - **Planner:** proposes tool steps for non-template requests.
 - **Plan Validator:** enforces the tool whitelist, schemas, dependencies, scope, and limits.
 - **State Graph:** executes validated steps and records invoked/skipped tools, timing, failures, and fallbacks.
 - **Evidence Aggregator:** merges typed tool results without inventing conclusions.
-- **Verification:** validates scope, provenance, versions, evidence references, conflicts, and sufficiency.
+- **Evidence Verification:** validates scope, provenance, versions, references, structure, and sufficiency before risk calculation.
+- **Risk Consistency Verification:** independently reproduces/checks risk inputs, weights, caps, tiers, conflicts, and confidence before escalation.
 - **Escalation:** maps verified risk to monitor/review/report recommendations.
 - **Alert Lifecycle:** persists review/report outcomes with idempotent creation and append-only transitions.
 - **Graph/Policy Retrieval:** optional extensions, never fabricated when unavailable.
@@ -115,7 +130,7 @@ All inter-component messages use strict Pydantic `v1` contracts:
 - flagged result
 - final response
 
-Every result records scope, status, warnings, timing, and provenance. Informational SQL/feature responses may omit risk and escalation when no suspicious finding was requested or produced.
+Every execution summary records an explicit `simple_lookup`, `feature_only`, or `full_investigation` route. Every result records scope, status, warnings, timing, and provenance. Informational SQL/feature responses may omit risk and escalation when no suspicious finding was requested or produced.
 
 ## Requirement Traceability
 
@@ -128,7 +143,9 @@ Every result records scope, status, warnings, timing, and provenance. Informatio
 | On-demand AML features | Feature Engineering Tool |
 | Rule/statistical/ML/hybrid detection | Anomaly Detection Tool |
 | Transaction/customer risk | Risk Classification Tool |
-| Human-readable reasons | Verification + Explanation Component |
+| Valid evidence before risk | Evidence Verification |
+| Reproducible risk before action | Risk Consistency Verification |
+| Human-readable reasons | Explanation Component over doubly verified evidence |
 | Monitor/review/report | Escalation + Alert Lifecycle |
 | Inspectable agent decisions | State Graph execution trace |
 | Charts, tables, and metrics | EDA Tool + final response/frontend |
@@ -161,10 +178,12 @@ This architecture and `IMPLEMENTATION_ROADMAP.md` agree on:
 - deterministic-first, LLM-at-the-edge behavior
 - five first-class challenge capabilities
 - first-class feature engineering and anomaly detection
+- explicit three-way routing recorded in every execution summary
 - transaction/customer risk and customer rollup
-- verified explanations and deterministic escalation
+- pre-risk evidence verification and post-risk consistency verification
+- doubly verified explanations and deterministic escalation
 - query-aware invoked/skipped tool tracing
 - separate ML and AML evaluation tracks
 - alert lifecycle and honest false-positive benchmarking
 
-No Phase 0 contract may introduce Phase 1 business logic. Future architecture changes require an explicit version and corresponding contract/test updates.
+The architecture's JSON snippets are explanatory, not permission to weaken the strict Phase 0 schemas. Raw requests do not contain model-detected intent, and plan dependencies refer to unique `step_id` values rather than ambiguous tool names. No Phase 0 contract may introduce Phase 1 business logic. Future architecture changes require an explicit version and corresponding contract/test updates.

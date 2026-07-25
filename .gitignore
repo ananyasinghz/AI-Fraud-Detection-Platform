@@ -28,6 +28,7 @@ data/raw/
 data/interim/
 data/processed/
 data/splits/
+data/evaluation/
 dataset/
 *.csv
 *.parquet

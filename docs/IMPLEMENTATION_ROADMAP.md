@@ -175,10 +175,11 @@ fraud/
 │   │   ├── risk/
 │   │   │   ├── classifier.py
 │   │   │   ├── customer_rollup.py
+│   │   │   ├── consistency.py          # post-risk consistency verification
 │   │   │   └── escalation.py
 │   │   ├── evidence/
 │   │   │   ├── aggregator.py
-│   │   │   └── verification.py
+│   │   │   └── verification.py         # pre-risk evidence verification
 │   │   ├── explanation/
 │   │   │   ├── generator.py
 │   │   │   └── faithfulness.py
@@ -244,8 +245,6 @@ Freeze contract version `v1` during Phase 0. Internal modules may evolve, but al
 {
   "query": "Find structuring patterns in the last 30 days",
   "as_of": "2026-07-25T00:00:00Z",
-  "intent": "pattern_search",
-  "target_scope": "customer",
   "filters": {
     "date_from": "2026-06-25T00:00:00Z",
     "date_to": "2026-07-25T00:00:00Z",
@@ -265,18 +264,26 @@ Freeze contract version `v1` during Phase 0. Internal modules may evolve, but al
 ```json
 {
   "strategy": "targeted_pattern_search",
+  "priority": "normal",
+  "planner_version": "template.v1",
   "steps": [
     {
+      "step_id": "features",
       "tool": "feature_engineering",
       "operation": "structuring_features",
+      "parameters": {},
       "depends_on": [],
-      "reason": "Compute only features required for structuring"
+      "reason": "Compute only features required for structuring",
+      "required": true
     },
     {
+      "step_id": "rules",
       "tool": "anomaly_detection",
       "operation": "rules_only",
-      "depends_on": ["feature_engineering"],
-      "reason": "Apply structuring thresholds without unrelated ML"
+      "parameters": {},
+      "depends_on": ["features"],
+      "reason": "Apply structuring thresholds without unrelated ML",
+      "required": true
     }
   ]
 }
@@ -289,15 +296,19 @@ Every tool returns:
 ```json
 {
   "tool": "feature_engineering",
+  "operation": "structuring_features",
   "status": "success",
   "scope": {},
   "data": {},
+  "evidence": [],
   "warnings": [],
   "duration_ms": 0,
+  "produced_at": "2026-07-25T00:00:01Z",
   "provenance": {
     "source": "sqlite",
     "query_or_version": "feature-contract-v1"
-  }
+  },
+  "error": null
 }
 ```
 
@@ -305,20 +316,29 @@ Every tool returns:
 
 ```json
 {
+  "contract_version": "v1",
+  "request_id": "req-demo-1",
+  "generated_at": "2026-07-25T00:00:02Z",
   "execution_summary": {
-    "query": "",
-    "detected_intent": "",
+    "query": "Show transactions over $10,000",
+    "detected_intent": "simple_lookup",
+    "route": "simple_lookup",
     "filters": {},
-    "plan": [],
-    "tools_invoked": [],
-    "tools_skipped": [],
+    "plan": null,
+    "tools_invoked": ["sql_lookup"],
+    "tools_skipped": [
+      {
+        "tool": "eda",
+        "reason": "A direct amount filter does not require dataset profiling"
+      }
+    ],
     "fallbacks": [],
     "warnings": []
   },
   "results": [],
-  "supporting_evidence": {},
+  "supporting_evidence": [],
   "charts": [],
-  "answer": ""
+  "answer": "No matching transactions were found."
 }
 ```
 
@@ -637,6 +657,7 @@ Execute validated plans conditionally while preserving a complete audit trail.
 `InvestigationState` includes:
 
 - request and normalized intent
+- selected route (`simple_lookup`, `feature_only`, or `full_investigation`)
 - query scope
 - validated plan
 - current step and completed steps
@@ -657,7 +678,7 @@ Execute validated plans conditionally while preserving a complete audit trail.
 - optional `graph_analysis_node`
 - optional `retrieval_node`
 - `aggregate_node`
-- Phase 8 additions: `risk_node`, `verification_node`, `escalation_node`, `explanation_node`
+- Phase 8 additions: `evidence_verification_node`, `risk_node`, `risk_consistency_node`, `escalation_node`, `explanation_node`
 
 The graph executor reads a validated plan rather than relying on a permanently hardcoded sequence. Dependencies declared in the plan determine ordering; independent safe operations may run in parallel later.
 
@@ -751,7 +772,7 @@ Only tools already implemented may be selected:
 - optional `graph_analysis`
 - optional `retrieval`
 
-Risk, verification, escalation, and explanation are added to the whitelist in Phase 8 after their nodes exist.
+Evidence verification, risk classification, risk-consistency verification, escalation, and explanation are added to the whitelist in Phase 8 after their nodes exist.
 
 ### Planner rules
 
@@ -825,6 +846,19 @@ If core Phase 8 work is at risk, defer Phase 7 entirely. Do not mock graph or re
 
 Convert verified signals into auditable risk outcomes and explain them without letting an LLM invent decisions.
 
+### Stage 1 — Evidence verification
+
+Before calculating risk, validate that:
+
+- every evidence reference resolves
+- the actual tool scope matches the requested scope
+- feature, model, dataset, and threshold versions are recorded
+- required tool outputs are complete and structurally valid
+- data sufficiency and missing-history warnings are explicit
+- hidden scenario labels or unverified LLM claims are absent
+
+Invalid required evidence blocks risk classification and returns a clearly marked partial/failed investigation. Optional missing evidence may continue with reduced confidence when policy permits.
+
 ### Risk Classification Tool
 
 Support both transaction and customer scope. Produce:
@@ -871,19 +905,18 @@ Rule base points, profile mappings, lookback window, the 90-day half-life, weigh
 
 The rollup result records `entity_id`, lookback boundaries, contributing transaction IDs, contributing rule IDs, component scores, decay values, missing-data warnings, `rollup_method`, and policy version. A severe recent transaction may independently make the customer high risk through `event_peak`; repeated moderate patterns may reach high risk through `pattern_breadth`.
 
-### Verification
+### Stage 2 — Risk consistency verification
 
-Checks include:
+After risk calculation, independently check that:
 
-- evidence reference exists
-- expected scope matches actual scope
-- thresholds and feature versions are recorded
-- conflicting ML/rule signals are surfaced
-- insufficient history lowers confidence
-- an explanation cannot cite data absent from verified evidence
+- the score and tier reproduce from the recorded policy version and verified inputs
+- component values, weights, caps, decay, and tier boundaries are valid
+- conflicting ML/rule signals are surfaced in confidence and warnings
+- insufficient history lowers confidence as required
+- no bounded context field independently caused a suspicious tier
 - high severity with weak data is queued for review rather than asserted as confirmed laundering
 
-Verification runs before explanation. Risk may be recomputed or downgraded if evidence is invalid.
+This second gate may reject, recompute, or downgrade an inconsistent risk result. Only a risk result that passes both verification stages may reach escalation and explanation.
 
 ### Escalation
 
@@ -895,7 +928,7 @@ Deterministic policy mapping:
 
 Use wording such as “recommend preparing/escalating for reporting according to institutional policy,” not “a SAR must be filed.” Any pattern override must be documented, versioned, and configurable; a structuring rule must not automatically claim a legal reporting obligation.
 
-`review` and `report` recommendations create or update an alert idempotently after verification succeeds. The alert stores an immutable snapshot reference rather than relying on mutable current customer data.
+`review` and `report` recommendations create or update an alert idempotently after both verification stages succeed. The alert stores an immutable snapshot reference rather than relying on mutable current customer data.
 
 ### Explanation
 
@@ -915,17 +948,19 @@ Use deterministic templates as a fallback when Ollama is unavailable.
 
 After these nodes exist, extend the planner whitelist:
 
-- suspicious-finding paths: `risk_classification → verification → escalation → explanation`
+- suspicious-finding paths: `evidence_verification → risk_classification → risk_consistency → escalation → explanation`
 - informational paths: omit these unless the user requests risk or suspicious results exist
 
 ### Required tests
 
 - Risk decision-table boundary tests.
+- Evidence-verification tests for unresolved references, scope mismatch, missing versions, invalid structure, and insufficient data.
 - Transaction and customer risk tests.
 - Customer-rollup tests covering one severe event, repeated moderate events, recency decay, duplicate-rule suppression, profile missingness, bounded KYC context, and exact tier boundaries.
 - Escalation mapping tests.
 - Idempotent alert-creation tests for `review` and `report`.
 - Conflicting and insufficient-evidence tests.
+- Risk-consistency tests for reproducibility, invalid weights/caps, context-only tiers, and required downgrades.
 - Explanation citation validation.
 - Hallucinated numbers/rules cause fallback or failure, not silent acceptance.
 - Ollama-down path produces a deterministic explanation.
@@ -1143,7 +1178,7 @@ CI should use tiny committed fixtures. Full raw-data and model evaluation runs s
 - Anomaly Detection Tool supporting at least rules and one ML/statistical path.
 - Transaction and customer risk.
 - Versioned customer-risk rollup using transaction, pattern, profile, and bounded KYC context.
-- Verification, escalation, grounded explanation.
+- Pre-risk evidence verification, post-risk consistency verification, escalation, and grounded explanation.
 - Alert queue, reviewer actions, and immutable transition history.
 - Accurate execution summary.
 - Results table and minimal supporting charts.
@@ -1195,7 +1230,7 @@ If a capability is unavailable, report it as skipped/unavailable with a reason.
 - [ ] Router and planner produce minimal validated plans.
 - [ ] State graph executes only planned nodes.
 - [ ] Execution trace records invoked/skipped tools and reasons.
-- [ ] Verification runs before explanation.
+- [ ] Evidence verification runs before risk; risk-consistency verification runs before escalation and explanation.
 - [ ] Escalation deterministically maps verified risk to action.
 - [ ] Review/report outcomes create idempotent alerts with immutable evidence snapshots.
 - [ ] Explanations cite verified evidence and have a deterministic fallback.
@@ -1213,7 +1248,7 @@ If a capability is unavailable, report it as skipped/unavailable with a reason.
 
 The challenge requirements are covered, but the following items cannot be honestly marked “resolved” by a roadmap alone:
 
-1. **Final architecture source:** `docs/ARCHITECTURE.md` is not yet present in the workspace. Before implementation, persist the finalized Part 10 architecture and create a short requirements-to-components traceability matrix. This roadmap should be corrected if that source contains a conflicting contract.
+1. **Final architecture source:** `docs/ARCHITECTURE.md` now contains the reconciled Part 10 Revision 2 architecture and requirements-to-components traceability. Frozen contract-v1 schemas remain authoritative where illustrative architecture payloads differ.
 2. **Policy and domain validation:** rollup weights, scenario definitions, rule thresholds, high-risk-country data, and escalation mappings are demonstration defaults. A qualified AML/compliance reviewer must validate them before any real-world claim.
 3. **Synthetic benchmark limits:** the false-positive comparison can support a hackathon result only on the declared synthetic distribution. It cannot establish production false-positive reduction without representative institutional data and analyst dispositions.
 4. **Dataset onboarding:** the MVP assumes versioned, preloaded schemas. Arbitrary CSV upload, schema mapping, malware scanning, column-level validation, and asynchronous ingestion are not included. Add a dataset-onboarding phase if judges must upload unseen files.

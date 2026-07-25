@@ -1,9 +1,10 @@
 """Typed application configuration."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,16 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     api_prefix: str = "/api/v1"
     contract_version: Literal["v1"] = "v1"
+    database_url: str = "sqlite:///./data/processed/fraud.db"
+    data_dir: Path = Path("data")
+    model_dir: Path = Path("models")
+    policy_config_path: Path = Path("config/policy/reporting_thresholds.v1.yaml")
+    scenario_config_path: Path = Path("config/generation/scenario_catalog.v1.yaml")
+    raw_creditcard_path: Path = Path("dataset/creditcard.csv")
+    development_seed: int = Field(default=42, ge=0)
+    heldout_seed: int = Field(default=99, ge=0)
+    ml_enabled: bool = True
+    ml_model_dir: Path = Path("models/ulb_v1/selected")
 
     @field_validator("api_prefix")
     @classmethod
@@ -33,6 +44,13 @@ class Settings(BaseSettings):
         if not normalized.startswith("/") or normalized == "":
             raise ValueError("api_prefix must start with '/' and cannot be root")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_distinct_seeds(self) -> "Settings":
+        """Keep development and held-out scenario populations separate."""
+        if self.development_seed == self.heldout_seed:
+            raise ValueError("development_seed and heldout_seed must differ")
+        return self
 
 
 @lru_cache(maxsize=1)

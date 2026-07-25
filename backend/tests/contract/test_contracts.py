@@ -22,6 +22,7 @@ from backend.app.domain import (
     ParsedIntent,
     PlanStep,
     RiskLevel,
+    RouteType,
     SkippedTool,
     TargetScope,
     ToolError,
@@ -318,6 +319,7 @@ def test_execution_summary_rejects_duplicate_or_overlapping_tools() -> None:
         ExecutionSummary(
             query="test",
             detected_intent=IntentType.SIMPLE_LOOKUP,
+            route=RouteType.SIMPLE_LOOKUP,
             filters=NormalizedFilters(),
             tools_invoked=[ToolName.SQL_LOOKUP, ToolName.SQL_LOOKUP],
         )
@@ -325,9 +327,21 @@ def test_execution_summary_rejects_duplicate_or_overlapping_tools() -> None:
         ExecutionSummary(
             query="test",
             detected_intent=IntentType.SIMPLE_LOOKUP,
+            route=RouteType.SIMPLE_LOOKUP,
             filters=NormalizedFilters(),
             tools_invoked=[ToolName.SQL_LOOKUP],
             tools_skipped=[SkippedTool(tool=ToolName.SQL_LOOKUP, reason="not needed")],
+        )
+
+
+def test_execution_summary_requires_an_explicit_route() -> None:
+    with pytest.raises(ValidationError, match="route"):
+        ExecutionSummary.model_validate(
+            {
+                "query": "Show transactions over 10000",
+                "detected_intent": "simple_lookup",
+                "filters": {},
+            }
         )
 
 
@@ -343,6 +357,7 @@ def test_final_response_supports_informational_result_without_risk() -> None:
         execution_summary=ExecutionSummary(
             query="Show transactions over 10000",
             detected_intent=IntentType.SIMPLE_LOOKUP,
+            route=RouteType.SIMPLE_LOOKUP,
             filters=NormalizedFilters(amount_min=Decimal("10000")),
             tools_invoked=[ToolName.SQL_LOOKUP],
         ),
@@ -411,6 +426,7 @@ def test_final_response_requires_aware_generated_at() -> None:
             execution_summary=ExecutionSummary(
                 query="test",
                 detected_intent=IntentType.SIMPLE_LOOKUP,
+                route=RouteType.SIMPLE_LOOKUP,
                 filters=NormalizedFilters(),
             ),
             answer="No result.",

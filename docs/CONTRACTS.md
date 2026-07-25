@@ -70,6 +70,7 @@ These examples are illustrative JSON payloads for the strict Pydantic models in 
   "execution_summary": {
     "query": "Show transactions over $10,000",
     "detected_intent": "simple_lookup",
+    "route": "simple_lookup",
     "filters": {
       "date_from": null,
       "date_to": null,

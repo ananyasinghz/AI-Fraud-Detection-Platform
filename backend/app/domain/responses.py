@@ -12,6 +12,7 @@ from backend.app.domain.enums import (
     EscalationAction,
     IntentType,
     RiskLevel,
+    RouteType,
     ToolName,
 )
 from backend.app.domain.evidence import ToolResult
@@ -31,6 +32,7 @@ class ExecutionSummary(ContractModel):
 
     query: str = Field(min_length=1, max_length=2000)
     detected_intent: IntentType
+    route: RouteType
     filters: NormalizedFilters
     plan: ValidatedPlan | None = None
     tools_invoked: list[ToolName] = Field(default_factory=list)

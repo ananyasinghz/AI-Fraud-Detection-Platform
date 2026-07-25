@@ -1,0 +1,11 @@
+version: reporting_thresholds.v1
+jurisdiction: DEMO-US
+currency: USD
+reporting_threshold_minor: 1000000
+structuring:
+  minimum_count: 3
+  lower_bound_ratio: 0.70
+  upper_bound_ratio: 0.99
+high_risk_countries:
+  - ZZ
+disclaimer: Synthetic hackathon policy only; not legal or compliance advice.

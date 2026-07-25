@@ -9,9 +9,16 @@ description = "Query-aware suspicious activity detection hackathon platform"
 readme = "README.md"
 requires-python = "==3.11.*"
 dependencies = [
+    "alembic==1.18.5",
     "fastapi==0.140.0",
+    "joblib==1.5.3",
+    "numpy==2.4.6",
+    "pandas==3.0.5",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
+    "PyYAML==6.0.3",
+    "scikit-learn==1.9.0",
+    "SQLAlchemy==2.0.51",
     "uvicorn[standard]==0.51.0",
 ]
 
@@ -19,9 +26,12 @@ dependencies = [
 dev = [
     "httpx2==2.9.1",
     "mypy==2.3.0",
+    "pandas-stubs==3.0.3.260530",
     "pytest==9.1.1",
     "pytest-cov==7.1.0",
     "ruff==0.16.0",
+    "scikit-learn-stubs==0.0.3",
+    "types-PyYAML==6.0.12.20260724",
 ]
 
 [tool.setuptools.packages.find]
@@ -30,6 +40,9 @@ include = ["backend*"]
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --cov=backend.app --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["backend/tests"]
+markers = [
+    "local_full_data: requires the local 151 MB ULB dataset",
+]
 
 [tool.coverage.run]
 branch = true
@@ -63,4 +76,8 @@ strict = true
 warn_unreachable = true
 pretty = true
 exclude = "(Credit-Card-Fraud-Detection|third_party)"
+
+[[tool.mypy.overrides]]
+module = ["joblib", "joblib.*"]
+ignore_missing_imports = true
 

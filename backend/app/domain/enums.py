@@ -22,6 +22,12 @@ class TargetScope(StrEnum):
     TRANSACTION = "transaction"
 
 
+class RouteType(StrEnum):
+    SIMPLE_LOOKUP = "simple_lookup"
+    FEATURE_ONLY = "feature_only"
+    FULL_INVESTIGATION = "full_investigation"
+
+
 class PatternType(StrEnum):
     STRUCTURING = "structuring"
     SMURFING = "smurfing"
