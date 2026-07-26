@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     heldout_seed: int = Field(default=99, ge=0)
     ml_enabled: bool = True
     ml_model_dir: Path = Path("models/ulb_v1/selected")
+    node_timeout_seconds: float = Field(default=30.0, gt=0)
+    node_max_retries: int = Field(default=1, ge=0, le=3)
 
     @field_validator("api_prefix")
     @classmethod

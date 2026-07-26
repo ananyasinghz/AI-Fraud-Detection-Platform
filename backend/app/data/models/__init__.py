@@ -11,6 +11,8 @@ from backend.app.data.models.tables import (
     DatasetRun,
     Device,
     Investigation,
+    InvestigationRun,
+    InvestigationStepEvent,
     Transaction,
 )
 
@@ -25,5 +27,7 @@ __all__ = [
     "DatasetRun",
     "Device",
     "Investigation",
+    "InvestigationRun",
+    "InvestigationStepEvent",
     "Transaction",
 ]

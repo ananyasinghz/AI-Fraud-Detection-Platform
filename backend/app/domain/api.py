@@ -1,4 +1,4 @@
-"""HTTP request/response contracts for Phase 3 APIs."""
+"""HTTP request/response contracts for Phase 3/4 APIs."""
 
 from datetime import datetime
 from typing import Literal
@@ -6,10 +6,17 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from backend.app.domain.base import ContractModel, is_timezone_aware
-from backend.app.domain.enums import EntityType, EscalationAction, RiskLevel, RouteType
+from backend.app.domain.enums import (
+    EntityType,
+    EscalationAction,
+    IntentType,
+    RiskLevel,
+    RouteType,
+)
 from backend.app.domain.evidence import ToolResult
 from backend.app.domain.filters import NormalizedFilters
 from backend.app.domain.plan import ValidatedPlan
+from backend.app.domain.responses import ExecutionSummary
 
 AlertStatus = Literal["open", "in_review", "escalated", "dismissed", "closed"]
 
@@ -21,6 +28,8 @@ class QueryRequest(ContractModel):
     as_of: datetime
     filters: NormalizedFilters = Field(default_factory=NormalizedFilters)
     plan: ValidatedPlan
+    route: RouteType = RouteType.FULL_INVESTIGATION
+    detected_intent: IntentType | None = None
 
     @field_validator("as_of")
     @classmethod
@@ -34,6 +43,8 @@ class QueryResponse(ContractModel):
     request_id: str
     tool_results: list[ToolResult]
     answer: str = Field(min_length=1, max_length=10000)
+    execution_summary: ExecutionSummary | None = None
+    status: Literal["completed", "partial", "failed"] = "completed"
 
 
 class InvestigationCreateRequest(ContractModel):
@@ -42,6 +53,7 @@ class InvestigationCreateRequest(ContractModel):
     filters: NormalizedFilters = Field(default_factory=NormalizedFilters)
     plan: ValidatedPlan
     route: RouteType = RouteType.FULL_INVESTIGATION
+    detected_intent: IntentType | None = None
     request_id: str | None = Field(default=None, min_length=1, max_length=128)
 
     @field_validator("as_of")
@@ -61,6 +73,8 @@ class InvestigationResponse(ContractModel):
     created_at: datetime
     completed_at: datetime | None = None
     tool_results: list[ToolResult] = Field(default_factory=list)
+    execution_summary: ExecutionSummary | None = None
+    answer: str | None = None
 
 
 class CustomerResponse(ContractModel):

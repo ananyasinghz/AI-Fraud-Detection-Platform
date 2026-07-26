@@ -199,29 +199,35 @@ Counterparties hold an opaque id, display name, optional country, and kind. Devi
 
 Indexes cover transaction time, customer/time, account/time, amount, type, country, and ML eligibility.
 
-### Phase 3 lifecycle APIs (schema stubs from Phase 1)
+### Phase 3–4 lifecycle APIs
 
-- `investigations`: request, query, route, status, and UTC lifecycle timestamps. Tool traces for
-  Phase 3 are persisted as JSON sidecars under `data/runtime/investigation_results/` until
-  Phase 4 execution-trace tables land.
-- `alerts`: entity, provisional risk snapshot, escalation, policy version, and a unique
-  idempotency key derived from entity + finding + policy version + investigation window.
-- `alert_events`: append-only status transition evidence with reviewer, reason, request,
-  evidence version, and risk-policy version. Index: `(alert_id, timestamp)`. Current alert
-  status always matches the latest event.
+- `investigations`: request, query, route, status (`running|completed|partial|failed`), and UTC
+  lifecycle timestamps.
+- `investigation_runs` (Alembic `0002`): one plan execution with plan snapshot, route, intent,
+  terminal status, timings, `execution_summary_json`, and `final_answer`. Optional FK to
+  `investigations` (null for ad-hoc `/query` runs).
+- `investigation_step_events`: append-only trace events
+  (`planned|running|succeeded|failed|skipped|timed_out`) with reason, attempt, duration, and
+  optional `tool_result_json`. Source of truth for `ExecutionSummary`.
+- `alerts` / `alert_events`: unchanged from Phase 3 (provisional risk placeholders; append-only
+  disposition history).
 
-Alert `risk_score` / `risk_tier` / `escalation_action` values written in Phase 3 are
-**provisional placeholders** mapped from anomaly-signal severity for schema completeness.
-They are not Phase 8 calibrated risk.
+Phase 3 JSON sidecars under `data/runtime/investigation_results/` are read only as a one-release
+fallback when no DB run exists.
 
-### Phase 3 tool and HTTP contracts
+### Tool and HTTP contracts
 
 Registered tools (common `ToolResult` envelope): `sql_lookup`, `feature_engineering`, `eda`,
 `anomaly_detection`, plus Phase 8 stubs `risk_classification` and `explanation` that return
-`SKIPPED` with `PHASE_8_NOT_IMPLEMENTED`.
+`SKIPPED` with `PHASE_8_NOT_IMPLEMENTED`. Graph nodes may also skip Phase 7 tools with
+`PHASE_7_NOT_IMPLEMENTED`.
 
-- `POST /api/v1/query` — supplied `ValidatedPlan` for deterministic tool testing (no LLM).
-- `POST|GET /api/v1/investigations[/{id}]` — create/retrieve with tool traces.
+Workflow skip reasons include `DEPENDENCY_FAILED`, `DEPENDENCY_SKIPPED`, `NODE_TIMEOUT`, and
+tool-local reasons. Required-tool failure/skip yields `partial`/`failed`; optional failure
+degrades and continues.
+
+- `POST /api/v1/query` — supplied `ValidatedPlan` via graph executor; returns `execution_summary`.
+- `POST|GET /api/v1/investigations[/{id}]` — create/retrieve with DB-backed traces and summary.
 - `GET /api/v1/customers/{id}`, `GET /api/v1/transactions/{id}`
 - `POST /api/v1/transactions/{id}/score` — scores `ml_eligible` rows with resolvable
   `ml_feature_ref` (`fixture:<file>:<row>`); otherwise `skipped` with reason.
@@ -229,7 +235,8 @@ Registered tools (common `ToolResult` envelope): `sql_lookup`, `feature_engineer
   through `open|in_review|escalated|dismissed|closed`.
 
 EDA may emit `ChartSpec` objects. Class/scenario label balance is skipped unless
-`allow_labels=true`, and runtime tables still never expose held-out labels.
+`allow_labels=true`, and runtime tables still never expose held-out labels. Aggregate responses
+are informational only until Phase 8 risk classification.
 
 ## Synthetic AML Bundles
 

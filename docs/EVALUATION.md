@@ -1,6 +1,6 @@
 # Evaluation
 
-**Status:** Phase 3 tools, REST/OpenAPI, and alert lifecycle verified
+**Status:** Phase 4 investigation state graph and execution traces verified
 
 ## Phase 1 Verification
 
@@ -36,7 +36,19 @@ The Phase 3 fixture suite adds coverage for:
 - ULB-attached seed helper using `fixture:creditcard_tiny.csv:<row>` (test-only; not default
   generation)
 
-Current result: 182 tests passed with 91.56% branch-aware coverage. Importing the FastAPI app
+## Phase 4 Verification
+
+The Phase 4 fixture suite adds coverage for:
+
+- route→intent mapping, append-only traces, and `ExecutionSummary` derived from executor state
+- dependency skip reasons, optional vs required failure, no double step dispatch, timeout
+  `timed_out` events, and one bounded retry for retryable failures
+- regression parity of happy-path SQL payloads between `ToolRegistry.dispatch` and the graph
+- API integration: distinct `tools_invoked` sets for feature-only vs SQL-only plans, persisted
+  summary on GET, and `/query` returning `execution_summary`
+- Alembic `0002` investigation run/step-event tables
+
+Current result: 191 tests passed with 90.85% branch-aware coverage. Importing the FastAPI app
 still does not load `backend.app.ml*` or `backend.evaluation*` (`scripts/verify_environment.py`).
 Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 

@@ -203,7 +203,8 @@ def test_query_executes_supplied_plan(api_client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["tool_results"][0]["tool"] == "feature_engineering"
-    assert "feature_engineering" in body["answer"]
+    assert body["execution_summary"]["tools_invoked"] == ["feature_engineering"]
+    assert body["status"] == "completed"
 
 
 def test_investigations_produce_distinct_tool_traces(api_client: TestClient) -> None:

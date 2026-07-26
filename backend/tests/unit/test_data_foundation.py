@@ -46,6 +46,8 @@ def test_migration_creates_tables_foreign_keys_and_indexes(
         "devices",
         "transactions",
         "investigations",
+        "investigation_runs",
+        "investigation_step_events",
         "alerts",
         "alert_events",
     }.issubset(inspector.get_table_names())

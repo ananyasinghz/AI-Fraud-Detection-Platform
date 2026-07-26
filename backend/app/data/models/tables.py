@@ -241,6 +241,73 @@ class Investigation(Base):
     created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'partial', 'failed')",
+            name="valid_investigation_status",
+        ),
+    )
+
+
+class InvestigationRun(Base):
+    """One execution of a validated plan for an investigation or ad-hoc query."""
+
+    __tablename__ = "investigation_runs"
+
+    run_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    investigation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("investigations.investigation_id", ondelete="CASCADE"),
+    )
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    route: Mapped[str] = mapped_column(String(32), nullable=False)
+    intent: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    execution_summary_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    final_answer: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'partial', 'failed')",
+            name="valid_investigation_run_status",
+        ),
+        Index("ix_investigation_runs_investigation", "investigation_id"),
+        Index("ix_investigation_runs_request", "request_id"),
+    )
+
+
+class InvestigationStepEvent(Base):
+    """Append-only execution-trace events for one investigation run."""
+
+    __tablename__ = "investigation_step_events"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("investigation_runs.run_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    step_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool: Mapped[str] = mapped_column(String(64), nullable=False)
+    operation: Mapped[str] = mapped_column(String(64), nullable=False)
+    event: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(500))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    tool_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "event IN ('planned', 'running', 'succeeded', 'failed', 'skipped', 'timed_out')",
+            name="valid_step_event",
+        ),
+        CheckConstraint("attempt >= 1", name="positive_attempt"),
+        Index("ix_step_events_run_created", "run_id", "created_at"),
+    )
+
 
 class Alert(Base):
     __tablename__ = "alerts"
