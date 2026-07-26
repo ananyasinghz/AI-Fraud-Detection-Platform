@@ -52,7 +52,7 @@ def route_parsed_intent(
                 ToolName.RISK_CLASSIFICATION,
             ),
             clarification="Explanation requests require Phase 8; please provide a scoped lookup.",
-            needs_planner=True,
+            needs_planner=False,
         )
 
     if ambiguous and parsed.intent is IntentType.BROAD_EXPLORATION:
@@ -92,6 +92,16 @@ def route_parsed_intent(
                 tools_invoked_expected=_expected_tools(plan),
                 tools_skipped_expected=(ToolName.EDA, ToolName.ANOMALY_DETECTION),
             )
+        if filters.transaction_ids and not low_confidence:
+            # No fixed template for transaction-id lookup; dynamic planner + safe fallback.
+            return RoutingDecision(
+                route=RouteType.SIMPLE_LOOKUP,
+                filters=filters,
+                plan=None,
+                tools_invoked_expected=(ToolName.SQL_LOOKUP,),
+                tools_skipped_expected=(ToolName.EDA, ToolName.ANOMALY_DETECTION),
+                needs_planner=True,
+            )
         return RoutingDecision(
             route=RouteType.SIMPLE_LOOKUP,
             filters=filters,
@@ -99,6 +109,7 @@ def route_parsed_intent(
             tools_invoked_expected=(),
             tools_skipped_expected=(),
             clarification="Simple lookup needs a customer id or amount threshold.",
+            needs_planner=False,
         )
 
     if parsed.intent is IntentType.THRESHOLD_AGGREGATION:

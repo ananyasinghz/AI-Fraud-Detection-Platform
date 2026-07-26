@@ -1,11 +1,11 @@
 # Data Dictionary
 
-**Status:** Phase 5 intent extraction and deterministic router implemented
+**Status:** Phase 6 validated dynamic planner implemented
 **Contract version:** `v1`
 
 This document covers the frozen boundary contracts, relational and ULB ML schemas, Phase 2
-query-scoping/feature/statistics/rules contracts, and Phase 5 NL → intent → route → template
-plan contracts.
+query-scoping/feature/statistics/rules contracts, Phase 5 NL → intent → route → template plans,
+and Phase 6 dynamic planning/validation.
 
 ## Contract Conventions
 
@@ -97,30 +97,47 @@ Free-text requests omit `plan`. Orchestration (`backend/app/services/routing.py`
 3. **Enum/ID validation** — invalid customer/transaction IDs and enums are dropped with an
    ambiguity note; scope is never silently widened to the full dataset.
 4. **Deterministic router** (`backend/app/nlu/router.py`) — maps `ParsedIntent` + confidence/
-   ambiguities to `RouteType`, merged `NormalizedFilters`, and a template `ValidatedPlan`, or a
-   clarification / `needs_planner` response when confidence is below
-   `FRAUD_INTENT_CONFIDENCE_FLOOR` (default `0.55`) or filters are empty/ambiguous for the route.
-5. **Templates** (`backend/app/nlu/templates.py`) — named deterministic plans only (no LLM plan
-   generation; that remains Phase 6). Example: “Show me transactions over $10,000” → SQL-only
-   `list_transactions` with amount filter (EDA/anomaly omitted).
+   ambiguities to `RouteType`, merged `NormalizedFilters`, and a **preferred** template
+   `ValidatedPlan`. When no template applies but the case is plannable (e.g. simple lookup by
+   transaction id), returns `plan=None` with `needs_planner=true`. Low confidence, invalid IDs,
+   and explanation requests (Phase 8) clarify without invoking the planner.
+5. **Templates** (`backend/app/nlu/templates.py`) — named deterministic plans for common intents.
+   Example: “Show me transactions over $10,000” → SQL-only `list_transactions` (EDA/anomaly
+   omitted). Templates are preferred over the dynamic planner when present.
+6. **Dynamic planner** (`backend/app/planning/`) — when `needs_planner` and no template: optional
+   Ollama plan JSON → semantic validator → execute; on failure after one retry, safe template
+   fallback (never “run every tool”). Feature-only / SQL-only plans never inject risk tiers.
 
 When `plan` is supplied, Phase 4 behavior is preserved (manual `ValidatedPlan` → graph executor;
 optional `detected_intent` / route override). Clarification failures surface as HTTP 422 with
 error code `CLARIFICATION_REQUIRED`.
 
-### Ollama / intent settings
+### Ollama / intent / planner settings
 
 | Setting | Env | Default | Notes |
 |---|---|---|---|
-| `ollama_enabled` | `FRAUD_OLLAMA_ENABLED` | `false` | CI/offline uses fallback |
+| `ollama_enabled` | `FRAUD_OLLAMA_ENABLED` | `false` | Shared by intent + planner HTTP |
 | `ollama_base_url` | `FRAUD_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | HTTP via `httpx` |
 | `ollama_model` | `FRAUD_OLLAMA_MODEL` | `llama3.2` | Small instruct model |
 | `ollama_timeout_seconds` | `FRAUD_OLLAMA_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `intent_confidence_floor` | `FRAUD_INTENT_CONFIDENCE_FLOOR` | `0.55` | Below → clarify |
 | `intent_parser_version` | `FRAUD_INTENT_PARSER_VERSION` | `intent_parser.v1` | Provenance string |
+| `planner_enabled` | `FRAUD_PLANNER_ENABLED` | `false` | CI uses template fallback |
+| `planner_version` | `FRAUD_PLANNER_VERSION` | `dynamic_planner.v1` | Provenance string |
+| `planner_max_steps` | `FRAUD_PLANNER_MAX_STEPS` | `20` | Hard cap on plan length |
 
-Labeled NL fixtures live at `backend/tests/fixtures/intent_queries.v1.json`. Offline metrics are
-produced by `backend/evaluation/intent_evaluation.py` (never imported under `backend/app`).
+### Planner whitelist and validation
+
+MVP whitelist (schemas only; no live Python callables in the prompt): `sql_lookup`,
+`feature_engineering`, `eda`, `anomaly_detection` with registry operations. Rejected at plan
+time: `risk_classification`, `explanation`, `graph_analysis`, `retrieval`, and other Phase 7/8
+tools. Semantic checks also reject unknown operations, missing entity parameters, over-broad EDA
+on entity-scoped intents, and empty/oversized plans. Domain `ValidatedPlan` still rejects cycles
+and duplicate identical steps.
+
+Labeled NL fixtures: `backend/tests/fixtures/intent_queries.v1.json`. Offline metrics:
+`backend/evaluation/intent_evaluation.py` and `backend/evaluation/planner_evaluation.py` (never
+imported under `backend/app`).
 
 Query/investigation create responses may include optional `parsed_intent`, `route`,
 `clarification`, and `needs_planner` alongside the existing `execution_summary`.
@@ -137,7 +154,8 @@ A plan has 1–20 unique acyclic steps. Each step contains:
 - concise reason
 - required/optional flag
 
-Identical tool operations and dependency cycles are invalid.
+Identical tool operations and dependency cycles are invalid. Phase 6 adds semantic whitelist and
+scope checks in `backend/app/planning/validator.py` before execution.
 
 ## ToolResult
 

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = Field(default=30.0, gt=0)
     intent_confidence_floor: float = Field(default=0.55, ge=0, le=1)
     intent_parser_version: str = Field(default="intent_parser.v1", min_length=1)
+    planner_enabled: bool = False
+    planner_version: str = Field(default="dynamic_planner.v1", min_length=1)
+    planner_max_steps: int = Field(default=20, ge=1, le=20)
 
     @field_validator("api_prefix")
     @classmethod

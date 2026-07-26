@@ -225,7 +225,7 @@
       "expected_route": "full_investigation",
       "expected_customer_ids": ["12"],
       "expect_clarification": true,
-      "needs_planner": true
+      "needs_planner": false
     },
     {
       "id": "p17",
@@ -233,7 +233,7 @@
       "expected_intent": "explanation_request",
       "expected_route": "full_investigation",
       "expect_clarification": true,
-      "needs_planner": true
+      "needs_planner": false
     },
     {
       "id": "p18",

@@ -1,4 +1,4 @@
-"""Parse free-text queries into routed template plans for execution."""
+"""Parse free-text queries into routed template or dynamic plans for execution."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from backend.app.domain.intent import AnalysisRequest, ParsedIntent
 from backend.app.domain.plan import ValidatedPlan
 from backend.app.nlu.intent_parser import parse_intent
 from backend.app.nlu.router import RoutingDecision, route_parsed_intent
+from backend.app.planning.planner import plan_for_intent
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class ResolvedRequest:
     parsed_intent: ParsedIntent | None
     clarification: str | None = None
     needs_planner: bool = False
+    plan_source: str | None = None
 
 
 def resolve_for_execution(
@@ -40,7 +42,7 @@ def resolve_for_execution(
     detected_intent: IntentType | None,
     settings: Settings,
 ) -> ResolvedRequest:
-    """If plan is supplied, use Phase 4 path; otherwise parse and route NL."""
+    """If plan is supplied, use Phase 4 path; otherwise parse, route, optionally plan."""
     if plan is not None:
         intent = detected_intent
         if intent is None:
@@ -55,6 +57,7 @@ def resolve_for_execution(
             route=route,
             detected_intent=intent,
             parsed_intent=None,
+            plan_source="manual",
         )
 
     analysis = AnalysisRequest(query=query, as_of=as_of, filters=filters)
@@ -65,25 +68,60 @@ def resolve_for_execution(
         parsed,
         confidence_floor=settings.intent_confidence_floor,
     )
-    if decision.plan is None:
+
+    # Templates preferred: use router plan when present.
+    if decision.plan is not None:
+        return ResolvedRequest(
+            query=query,
+            as_of=as_of,
+            filters=decision.filters,
+            plan=decision.plan,
+            route=decision.route,
+            detected_intent=parsed.intent,
+            parsed_intent=parsed,
+            clarification=decision.clarification,
+            needs_planner=False,
+            plan_source="template",
+        )
+
+    # Dynamic planner for plannable non-template cases.
+    if decision.needs_planner:
+        planner_result = plan_for_intent(parsed, settings=settings)
+        if planner_result.plan is not None:
+            return ResolvedRequest(
+                query=query,
+                as_of=as_of,
+                filters=decision.filters,
+                plan=planner_result.plan,
+                route=decision.route,
+                detected_intent=parsed.intent,
+                parsed_intent=parsed,
+                clarification=None,
+                needs_planner=True,
+                plan_source=planner_result.source,
+            )
         raise AppError(
             code="CLARIFICATION_REQUIRED",
-            message=decision.clarification or "Unable to route query without clarification",
+            message=(
+                decision.clarification
+                or "Unable to build a validated plan; please refine the query."
+            ),
             status_code=422,
             details={
-                "needs_planner": decision.needs_planner,
+                "needs_planner": True,
                 "parsed_intent": parsed.model_dump(mode="json"),
                 "route": decision.route.value,
+                "rejection_reasons": list(planner_result.rejection_reasons),
             },
         )
-    return ResolvedRequest(
-        query=query,
-        as_of=as_of,
-        filters=decision.filters,
-        plan=decision.plan,
-        route=decision.route,
-        detected_intent=parsed.intent,
-        parsed_intent=parsed,
-        clarification=decision.clarification,
-        needs_planner=decision.needs_planner,
+
+    raise AppError(
+        code="CLARIFICATION_REQUIRED",
+        message=decision.clarification or "Unable to route query without clarification",
+        status_code=422,
+        details={
+            "needs_planner": decision.needs_planner,
+            "parsed_intent": parsed.model_dump(mode="json"),
+            "route": decision.route.value,
+        },
     )

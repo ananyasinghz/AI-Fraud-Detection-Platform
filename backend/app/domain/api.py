@@ -1,4 +1,4 @@
-"""HTTP request/response contracts for Phase 3-5 APIs."""
+"""HTTP request/response contracts for Phase 3-6 APIs."""
 
 from datetime import datetime
 from typing import Literal

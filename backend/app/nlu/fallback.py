@@ -185,6 +185,16 @@ def extract_fallback(query: str) -> IntentDraft:
             ambiguities=ambiguities,
         )
 
+    if transaction_ids and ("lookup" in lower or "show" in lower or "get" in lower):
+        return IntentDraft(
+            intent=IntentType.SIMPLE_LOOKUP,
+            target_scope=TargetScope.TRANSACTION,
+            confidence=0.78,
+            transaction_ids=transaction_ids[:1],
+            relative_date=relative_date,
+            ambiguities=ambiguities,
+        )
+
     if customer_ids:
         return IntentDraft(
             intent=IntentType.SIMPLE_LOOKUP,

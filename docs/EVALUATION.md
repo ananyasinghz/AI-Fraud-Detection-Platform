@@ -1,6 +1,6 @@
 # Evaluation
 
-**Status:** Phase 5 intent extraction and deterministic router verified
+**Status:** Phase 6 validated dynamic planner verified
 
 ## Phase 1 Verification
 
@@ -83,7 +83,36 @@ Measured on the offline deterministic fallback extractor (`FRAUD_OLLAMA_ENABLED=
 These scores are fixture-regression metrics for the fallback+router path, not a claim about
 live Ollama quality. When Ollama is enabled, the same labels remain the evaluation target.
 
-Current result: 215 tests passed with 91.22% branch-aware coverage. Importing the FastAPI app
+## Phase 6 Verification
+
+The Phase 6 suite adds coverage for:
+
+- Semantic plan validator: whitelist (sql/feature/eda/anomaly only), unknown ops, Phase 8 tool
+  rejection, over-broad EDA on entity scope, empty/invalid schemas, domain cycle/duplicate checks
+- Dynamic planner with injectable Ollama transport: success, one retry on malformed JSON, then
+  deterministic safe-template fallback; `FRAUD_PLANNER_ENABLED=false` uses fallback only
+- Template-preferred routing: common intents (including “>$10,000” SQL-only) still use Phase 5
+  templates; `needs_planner` path (e.g. transaction-id simple lookup) runs planner → validator →
+  execute with filter propagation
+- Explanation requests still clarify (Phase 8); low-confidence vague queries still 422
+- Forced-planner mandatory invoke/skip regression for the six roadmap queries
+
+### Offline planner tool-selection metrics
+
+Evaluator: `python -m backend.evaluation.planner_evaluation` (force planner+validator; Ollama
+disabled → safe template fallback). Same labeled fixture; clarification rows skipped.
+
+Measured (`FRAUD_OLLAMA_ENABLED=false`, force fallback plans):
+
+| Measure | Value | n |
+|---|---:|---:|
+| tool-set precision | 1.000 | 27 |
+| tool-set recall | 1.000 | 27 |
+| exact tool-set match | 1.000 | 27 |
+
+These are fixture-regression metrics for the fallback planner path, not live Ollama planner quality.
+
+Current result: 232 tests passed with 90.67% branch-aware coverage. Importing the FastAPI app
 still does not load `backend.app.ml*` or `backend.evaluation*` (`scripts/verify_environment.py`).
 Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 
@@ -121,7 +150,7 @@ signal is presented as a measured detector result.
 ## Pending for Later Phases
 
 - synthetic scenario detection results by pattern
-- Phase 6 dynamic planner tool-selection accuracy (beyond Phase 5 template routes)
+- live Ollama planner quality (beyond offline fallback tool-selection metrics)
 - transaction and customer risk results
 - naive baseline versus contextual detector false-positive comparison on frozen held-out data
 - explanation citation/faithfulness
