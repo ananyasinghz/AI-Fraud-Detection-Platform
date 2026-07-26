@@ -1,6 +1,6 @@
 # Evaluation
 
-**Status:** Phase 4 investigation state graph and execution traces verified
+**Status:** Phase 5 intent extraction and deterministic router verified
 
 ## Phase 1 Verification
 
@@ -48,7 +48,42 @@ The Phase 4 fixture suite adds coverage for:
   summary on GET, and `/query` returning `execution_summary`
 - Alembic `0002` investigation run/step-event tables
 
-Current result: 191 tests passed with 90.85% branch-aware coverage. Importing the FastAPI app
+## Phase 5 Verification
+
+The Phase 5 suite adds coverage for:
+
+- UTC date normalization of relative tokens (`last_30_days`, `this_month`, `last_7_days`) from
+  request `as_of` into half-open filter windows (no LLM calendar math)
+- Ollama parser transport injection: success path, one retry on malformed JSON, then deterministic
+  fallback; disabled Ollama uses fallback only
+- Deterministic router templates for the six mandatory NL queries, including SQL-only
+  `list_transactions` for “Show me transactions over $10,000” (no EDA/anomaly)
+- Invalid/ambiguous IDs and low-confidence queries return clarification (`needs_planner` /
+  HTTP 422 `CLARIFICATION_REQUIRED`) without silently broadening to dataset EDA
+- Free-text `POST /api/v1/query` without `plan` (parse → route → template → graph) and unchanged
+  explicit-`plan` Phase 4 behavior
+
+### Offline intent metrics (`intent_queries.v1`)
+
+Labeled set: `backend/tests/fixtures/intent_queries.v1.json` (32 queries, including the six
+mandatory strings and paraphrases/invalid IDs). Evaluator:
+`python -m backend.evaluation.intent_evaluation` (eval-only; not imported by the app).
+
+Measured on the offline deterministic fallback extractor (`FRAUD_OLLAMA_ENABLED=false`):
+
+| Field | Accuracy | n |
+|---|---:|---:|
+| intent | 1.000 | 32 |
+| entity_ids | 1.000 | 11 |
+| dates (relative → window) | 1.000 | 6 |
+| pattern_type | 1.000 | 4 |
+| transaction_type | n/a | 0 |
+| route | 1.000 | 30 |
+
+These scores are fixture-regression metrics for the fallback+router path, not a claim about
+live Ollama quality. When Ollama is enabled, the same labels remain the evaluation target.
+
+Current result: 215 tests passed with 91.22% branch-aware coverage. Importing the FastAPI app
 still does not load `backend.app.ml*` or `backend.evaluation*` (`scripts/verify_environment.py`).
 Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 
@@ -86,7 +121,7 @@ signal is presented as a measured detector result.
 ## Pending for Later Phases
 
 - synthetic scenario detection results by pattern
-- intent/filter extraction and planner tool-selection accuracy
+- Phase 6 dynamic planner tool-selection accuracy (beyond Phase 5 template routes)
 - transaction and customer risk results
 - naive baseline versus contextual detector false-positive comparison on frozen held-out data
 - explanation citation/faithfulness

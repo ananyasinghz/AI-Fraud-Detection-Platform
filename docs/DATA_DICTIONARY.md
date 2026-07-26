@@ -1,10 +1,11 @@
 # Data Dictionary
 
-**Status:** Phase 2 detection core implemented
+**Status:** Phase 5 intent extraction and deterministic router implemented
 **Contract version:** `v1`
 
-This document covers the frozen boundary contracts, relational and ULB ML schemas, and the
-Phase 2 query-scoping, feature, statistics, and deterministic-rule contracts.
+This document covers the frozen boundary contracts, relational and ULB ML schemas, Phase 2
+query-scoping/feature/statistics/rules contracts, and Phase 5 NL → intent → route → template
+plan contracts.
 
 ## Contract Conventions
 
@@ -81,6 +82,48 @@ KYC rating, and residence country cannot independently fire it.
 ## ParsedIntent
 
 Contains one allow-listed intent, target scope, normalized filters, parser confidence, extracted entities, ambiguities, and parser version.
+
+### Phase 5 NL pipeline
+
+Free-text requests omit `plan`. Orchestration (`backend/app/services/routing.py`) runs:
+
+1. **Intent parser** (`backend/app/nlu/intent_parser.py`) — optional Ollama HTTP client
+   (`FRAUD_OLLAMA_*`); injectable transport for tests. One retry on malformed JSON, then the
+   deterministic fallback extractor (`backend/app/nlu/fallback.py`). When
+   `FRAUD_OLLAMA_ENABLED=false` (default), only the fallback runs.
+2. **Date normalizer** (`backend/app/nlu/date_normalizer.py`) — resolves relative tokens such as
+   `last_30_days` / `this_month` / `last_7_days` from request `as_of` into UTC half-open
+   `date_from`/`date_to`. Absolute dates pass through. No LLM calendar math.
+3. **Enum/ID validation** — invalid customer/transaction IDs and enums are dropped with an
+   ambiguity note; scope is never silently widened to the full dataset.
+4. **Deterministic router** (`backend/app/nlu/router.py`) — maps `ParsedIntent` + confidence/
+   ambiguities to `RouteType`, merged `NormalizedFilters`, and a template `ValidatedPlan`, or a
+   clarification / `needs_planner` response when confidence is below
+   `FRAUD_INTENT_CONFIDENCE_FLOOR` (default `0.55`) or filters are empty/ambiguous for the route.
+5. **Templates** (`backend/app/nlu/templates.py`) — named deterministic plans only (no LLM plan
+   generation; that remains Phase 6). Example: “Show me transactions over $10,000” → SQL-only
+   `list_transactions` with amount filter (EDA/anomaly omitted).
+
+When `plan` is supplied, Phase 4 behavior is preserved (manual `ValidatedPlan` → graph executor;
+optional `detected_intent` / route override). Clarification failures surface as HTTP 422 with
+error code `CLARIFICATION_REQUIRED`.
+
+### Ollama / intent settings
+
+| Setting | Env | Default | Notes |
+|---|---|---|---|
+| `ollama_enabled` | `FRAUD_OLLAMA_ENABLED` | `false` | CI/offline uses fallback |
+| `ollama_base_url` | `FRAUD_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | HTTP via `httpx` |
+| `ollama_model` | `FRAUD_OLLAMA_MODEL` | `llama3.2` | Small instruct model |
+| `ollama_timeout_seconds` | `FRAUD_OLLAMA_TIMEOUT_SECONDS` | `30` | Per-request timeout |
+| `intent_confidence_floor` | `FRAUD_INTENT_CONFIDENCE_FLOOR` | `0.55` | Below → clarify |
+| `intent_parser_version` | `FRAUD_INTENT_PARSER_VERSION` | `intent_parser.v1` | Provenance string |
+
+Labeled NL fixtures live at `backend/tests/fixtures/intent_queries.v1.json`. Offline metrics are
+produced by `backend/evaluation/intent_evaluation.py` (never imported under `backend/app`).
+
+Query/investigation create responses may include optional `parsed_intent`, `route`,
+`clarification`, and `needs_planner` alongside the existing `execution_summary`.
 
 ## ValidatedPlan
 
@@ -226,8 +269,10 @@ Workflow skip reasons include `DEPENDENCY_FAILED`, `DEPENDENCY_SKIPPED`, `NODE_T
 tool-local reasons. Required-tool failure/skip yields `partial`/`failed`; optional failure
 degrades and continues.
 
-- `POST /api/v1/query` — supplied `ValidatedPlan` via graph executor; returns `execution_summary`.
-- `POST|GET /api/v1/investigations[/{id}]` — create/retrieve with DB-backed traces and summary.
+- `POST /api/v1/query` — optional `plan`: if omitted, NL parse → route → template plan → graph;
+  if provided, Phase 4 manual-plan path. Returns `execution_summary` and optional NL fields.
+- `POST|GET /api/v1/investigations[/{id}]` — same optional-`plan` create path; retrieve with
+  DB-backed traces and summary.
 - `GET /api/v1/customers/{id}`, `GET /api/v1/transactions/{id}`
 - `POST /api/v1/transactions/{id}/score` — scores `ml_eligible` rows with resolvable
   `ml_feature_ref` (`fixture:<file>:<row>`); otherwise `skipped` with reason.

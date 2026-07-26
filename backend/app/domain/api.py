@@ -1,4 +1,4 @@
-"""HTTP request/response contracts for Phase 3/4 APIs."""
+"""HTTP request/response contracts for Phase 3-5 APIs."""
 
 from datetime import datetime
 from typing import Literal
@@ -15,6 +15,7 @@ from backend.app.domain.enums import (
 )
 from backend.app.domain.evidence import ToolResult
 from backend.app.domain.filters import NormalizedFilters
+from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import ValidatedPlan
 from backend.app.domain.responses import ExecutionSummary
 
@@ -22,12 +23,12 @@ AlertStatus = Literal["open", "in_review", "escalated", "dismissed", "closed"]
 
 
 class QueryRequest(ContractModel):
-    """Deterministic tool-testing entry point with a supplied plan."""
+    """Query entry point: optional plan (Phase 4) or free-text routing (Phase 5)."""
 
     query: str = Field(min_length=1, max_length=2000)
     as_of: datetime
     filters: NormalizedFilters = Field(default_factory=NormalizedFilters)
-    plan: ValidatedPlan
+    plan: ValidatedPlan | None = None
     route: RouteType = RouteType.FULL_INVESTIGATION
     detected_intent: IntentType | None = None
 
@@ -45,13 +46,17 @@ class QueryResponse(ContractModel):
     answer: str = Field(min_length=1, max_length=10000)
     execution_summary: ExecutionSummary | None = None
     status: Literal["completed", "partial", "failed"] = "completed"
+    parsed_intent: ParsedIntent | None = None
+    route: RouteType | None = None
+    clarification: str | None = None
+    needs_planner: bool = False
 
 
 class InvestigationCreateRequest(ContractModel):
     query: str = Field(min_length=1, max_length=2000)
     as_of: datetime
     filters: NormalizedFilters = Field(default_factory=NormalizedFilters)
-    plan: ValidatedPlan
+    plan: ValidatedPlan | None = None
     route: RouteType = RouteType.FULL_INVESTIGATION
     detected_intent: IntentType | None = None
     request_id: str | None = Field(default=None, min_length=1, max_length=128)
@@ -75,6 +80,9 @@ class InvestigationResponse(ContractModel):
     tool_results: list[ToolResult] = Field(default_factory=list)
     execution_summary: ExecutionSummary | None = None
     answer: str | None = None
+    parsed_intent: ParsedIntent | None = None
+    clarification: str | None = None
+    needs_planner: bool = False
 
 
 class CustomerResponse(ContractModel):

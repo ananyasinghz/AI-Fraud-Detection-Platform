@@ -64,18 +64,31 @@ def create_investigation(
     registry: ToolRegistry,
     settings: Settings,
 ) -> tuple[Investigation, ExecutionOutcome]:
+    from backend.app.services.routing import resolve_for_execution
+
     request_id = request.request_id or f"req-{uuid4().hex}"
     existing = session.scalar(select(Investigation).where(Investigation.request_id == request_id))
     if existing is not None:
         return existing, _outcome_from_stored(session, existing, settings.data_dir)
 
-    intent = request.detected_intent or intent_from_route(request.route)
+    resolved = resolve_for_execution(
+        query=request.query,
+        as_of=request.as_of,
+        filters=request.filters,
+        plan=request.plan,
+        route=request.route,
+        detected_intent=request.detected_intent,
+        settings=settings,
+    )
+    # Keep request-scoped tool context filters aligned with routed filters.
+    context.filters = resolved.filters
+
     now = datetime.now(tz=UTC)
     investigation = Investigation(
         investigation_id=f"inv-{uuid4().hex}",
         request_id=request_id,
         query_text=request.query,
-        route=request.route.value,
+        route=resolved.route.value,
         status="running",
         created_at=now,
         completed_at=None,
@@ -85,11 +98,11 @@ def create_investigation(
 
     state = InvestigationState(
         request_id=request_id,
-        query=request.query,
-        route=request.route,
-        detected_intent=intent,
-        filters=request.filters,
-        plan=request.plan,
+        query=resolved.query,
+        route=resolved.route,
+        detected_intent=resolved.detected_intent,
+        filters=resolved.filters,
+        plan=resolved.plan,
         as_of=request.as_of,
         investigation_id=investigation.investigation_id,
     )

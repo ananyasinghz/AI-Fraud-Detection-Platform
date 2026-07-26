@@ -1,4 +1,4 @@
-"""Deterministic query execution with a supplied ValidatedPlan."""
+"""Query execution: manual plan or Phase 5 free-text routing."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from backend.app.api.dependencies import (
 from backend.app.core.errors import AppError
 from backend.app.domain.api import QueryRequest, QueryResponse
 from backend.app.services import investigations as investigation_service
+from backend.app.services.routing import resolve_for_execution
 from backend.app.tools.registry import UnknownToolError, UnknownToolOperationError
 
 router = APIRouter(tags=["query"])
@@ -28,24 +29,33 @@ async def execute_query(
     policy: PolicyDep,
     registry: RegistryDep,
 ) -> QueryResponse:
+    request_id = getattr(request.state, "request_id", "unknown")
+    resolved = resolve_for_execution(
+        query=body.query,
+        as_of=body.as_of,
+        filters=body.filters,
+        plan=body.plan,
+        route=body.route,
+        detected_intent=body.detected_intent,
+        settings=settings,
+    )
     context = build_tool_context(
         session=session,
         settings=settings,
         policy=policy,
-        filters=body.filters,
+        filters=resolved.filters,
         as_of=body.as_of,
         request=request,
     )
-    request_id = getattr(request.state, "request_id", "unknown")
     try:
         outcome = investigation_service.execute_query_plan(
             session,
             request_id=request_id,
-            query=body.query,
-            route=body.route,
-            detected_intent=body.detected_intent,
-            filters=body.filters,
-            plan=body.plan,
+            query=resolved.query,
+            route=resolved.route,
+            detected_intent=resolved.detected_intent,
+            filters=resolved.filters,
+            plan=resolved.plan,
             as_of=body.as_of,
             context=context,
             registry=registry,
@@ -62,4 +72,8 @@ async def execute_query(
         answer=outcome.final_response.answer,
         execution_summary=outcome.final_response.execution_summary,
         status=outcome.status,  # type: ignore[arg-type]
+        parsed_intent=resolved.parsed_intent,
+        route=resolved.route,
+        clarification=resolved.clarification,
+        needs_planner=resolved.needs_planner,
     )

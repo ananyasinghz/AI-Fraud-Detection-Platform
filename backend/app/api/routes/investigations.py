@@ -15,10 +15,11 @@ from backend.app.core.errors import AppError
 from backend.app.data.models import Investigation
 from backend.app.domain.api import InvestigationCreateRequest, InvestigationResponse
 from backend.app.domain.evidence import ToolResult
+from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.responses import ExecutionSummary
 from backend.app.services import investigations as investigation_service
+from backend.app.services.routing import resolve_for_execution
 from backend.app.tools.registry import UnknownToolError, UnknownToolOperationError
-from backend.app.workflow.graph import ExecutionOutcome
 
 router = APIRouter(tags=["investigations"])
 
@@ -29,6 +30,9 @@ def _to_response(
     tool_results: list[ToolResult],
     execution_summary: ExecutionSummary | None,
     answer: str | None,
+    parsed_intent: ParsedIntent | None = None,
+    clarification: str | None = None,
+    needs_planner: bool = False,
 ) -> InvestigationResponse:
     return InvestigationResponse(
         investigation_id=investigation.investigation_id,
@@ -41,18 +45,9 @@ def _to_response(
         tool_results=tool_results,
         execution_summary=execution_summary,
         answer=answer,
-    )
-
-
-def _from_outcome(
-    investigation: Investigation,
-    outcome: ExecutionOutcome,
-) -> InvestigationResponse:
-    return _to_response(
-        investigation,
-        tool_results=outcome.state.tool_results,
-        execution_summary=outcome.final_response.execution_summary,
-        answer=outcome.final_response.answer,
+        parsed_intent=parsed_intent,
+        clarification=clarification,
+        needs_planner=needs_planner,
     )
 
 
@@ -65,18 +60,36 @@ async def create_investigation(
     policy: PolicyDep,
     registry: RegistryDep,
 ) -> InvestigationResponse:
+    resolved = resolve_for_execution(
+        query=body.query,
+        as_of=body.as_of,
+        filters=body.filters,
+        plan=body.plan,
+        route=body.route,
+        detected_intent=body.detected_intent,
+        settings=settings,
+    )
+    # Rebuild body-equivalent with resolved plan for the service.
+    resolved_body = body.model_copy(
+        update={
+            "plan": resolved.plan,
+            "route": resolved.route,
+            "filters": resolved.filters,
+            "detected_intent": resolved.detected_intent,
+        }
+    )
     context = build_tool_context(
         session=session,
         settings=settings,
         policy=policy,
-        filters=body.filters,
+        filters=resolved.filters,
         as_of=body.as_of,
         request=request,
     )
     try:
         investigation, outcome = investigation_service.create_investigation(
             session,
-            body,
+            resolved_body,
             context=context,
             registry=registry,
             settings=settings,
@@ -85,7 +98,15 @@ async def create_investigation(
         raise AppError(code="UNKNOWN_TOOL", message=str(exc), status_code=422) from exc
     except ValueError as exc:
         raise AppError(code="INVALID_PLAN", message=str(exc), status_code=422) from exc
-    return _from_outcome(investigation, outcome)
+    return _to_response(
+        investigation,
+        tool_results=outcome.state.tool_results,
+        execution_summary=outcome.final_response.execution_summary,
+        answer=outcome.final_response.answer,
+        parsed_intent=resolved.parsed_intent,
+        clarification=resolved.clarification,
+        needs_planner=resolved.needs_planner,
+    )
 
 
 @router.get("/investigations/{investigation_id}", response_model=InvestigationResponse)

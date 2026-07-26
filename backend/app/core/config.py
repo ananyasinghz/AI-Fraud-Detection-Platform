@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     ml_model_dir: Path = Path("models/ulb_v1/selected")
     node_timeout_seconds: float = Field(default=30.0, gt=0)
     node_max_retries: int = Field(default=1, ge=0, le=3)
+    ollama_enabled: bool = False
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.2"
+    ollama_timeout_seconds: float = Field(default=30.0, gt=0)
+    intent_confidence_floor: float = Field(default=0.55, ge=0, le=1)
+    intent_parser_version: str = Field(default="intent_parser.v1", min_length=1)
 
     @field_validator("api_prefix")
     @classmethod

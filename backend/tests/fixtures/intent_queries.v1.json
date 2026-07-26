@@ -1,0 +1,321 @@
+{
+  "version": "intent_queries.v1",
+  "as_of": "2026-02-15T00:00:00+00:00",
+  "queries": [
+    {
+      "id": "m1",
+      "query": "Find structuring patterns in the last 30 days.",
+      "mandatory": true,
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "structuring",
+      "expect_relative_date": "last_30_days",
+      "tools_invoked": ["feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "m2",
+      "query": "Which customers made 10+ transactions under $10,000?",
+      "mandatory": true,
+      "expected_intent": "threshold_aggregation",
+      "expected_route": "feature_only",
+      "expected_amount_max": "10000",
+      "tools_invoked": ["sql_lookup", "feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "m3",
+      "query": "Is customer ID 4521 suspicious?",
+      "mandatory": true,
+      "expected_intent": "entity_investigation",
+      "expected_route": "full_investigation",
+      "expected_customer_ids": ["4521"],
+      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "m4",
+      "query": "Did customer 123 suddenly increase spending this month?",
+      "mandatory": true,
+      "expected_intent": "feature_comparison",
+      "expected_route": "feature_only",
+      "expected_customer_ids": ["123"],
+      "expect_relative_date": "this_month",
+      "tools_invoked": ["feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "m5",
+      "query": "Show me transactions over $10,000.",
+      "mandatory": true,
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_amount_min": "10000",
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "m6",
+      "query": "Analyse this dataset for suspicious activity.",
+      "mandatory": true,
+      "expected_intent": "broad_exploration",
+      "expected_route": "full_investigation",
+      "tools_invoked": ["eda"],
+      "tools_skipped": [],
+      "expect_clarification": false
+    },
+    {
+      "id": "p1",
+      "query": "Look for structuring in the past 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "structuring",
+      "tools_invoked": ["feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p2",
+      "query": "Find smurfing patterns last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "smurfing",
+      "tools_invoked": ["feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p3",
+      "query": "Show transactions above 10000 dollars",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_amount_min": "10000",
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p4",
+      "query": "List payments greater than $10,000",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_amount_min": "10000",
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p5",
+      "query": "Customers with 10+ transactions under 10000",
+      "expected_intent": "threshold_aggregation",
+      "expected_route": "feature_only",
+      "expected_amount_max": "10000",
+      "tools_invoked": ["sql_lookup", "feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p6",
+      "query": "Who made more than 10 transactions below $10,000?",
+      "expected_intent": "threshold_aggregation",
+      "expected_route": "feature_only",
+      "expected_amount_max": "10000",
+      "tools_invoked": ["sql_lookup", "feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p7",
+      "query": "Is customer ID C-99 suspicious?",
+      "expected_intent": "entity_investigation",
+      "expected_route": "full_investigation",
+      "expected_customer_ids": ["C-99"],
+      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p8",
+      "query": "Investigate customer 4521",
+      "expected_intent": "entity_investigation",
+      "expected_route": "full_investigation",
+      "expected_customer_ids": ["4521"],
+      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p9",
+      "query": "Did customer 123 increase spending this month?",
+      "expected_intent": "feature_comparison",
+      "expected_route": "feature_only",
+      "expected_customer_ids": ["123"],
+      "expect_relative_date": "this_month",
+      "tools_invoked": ["feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p10",
+      "query": "Customer 55 spending spike this month",
+      "expected_intent": "feature_comparison",
+      "expected_route": "feature_only",
+      "expected_customer_ids": ["55"],
+      "expect_relative_date": "this_month",
+      "tools_invoked": ["feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p11",
+      "query": "Analyze this dataset for suspicious activity",
+      "expected_intent": "broad_exploration",
+      "expected_route": "full_investigation",
+      "tools_invoked": ["eda"],
+      "tools_skipped": [],
+      "expect_clarification": false
+    },
+    {
+      "id": "p12",
+      "query": "Run broad EDA on the dataset",
+      "expected_intent": "broad_exploration",
+      "expected_route": "full_investigation",
+      "tools_invoked": ["eda"],
+      "tools_skipped": [],
+      "expect_clarification": false
+    },
+    {
+      "id": "p13",
+      "query": "Lookup customer ID A1",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_customer_ids": ["A1"],
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p14",
+      "query": "Get customer 9001 details",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_customer_ids": ["9001"],
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p15",
+      "query": "Score transaction TX-1 for fraud",
+      "expected_intent": "transaction_scoring",
+      "expected_route": "full_investigation",
+      "tools_invoked": ["sql_lookup", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p16",
+      "query": "Explain why customer 12 was flagged",
+      "expected_intent": "explanation_request",
+      "expected_route": "full_investigation",
+      "expected_customer_ids": ["12"],
+      "expect_clarification": true,
+      "needs_planner": true
+    },
+    {
+      "id": "p17",
+      "query": "Why was this alert created?",
+      "expected_intent": "explanation_request",
+      "expected_route": "full_investigation",
+      "expect_clarification": true,
+      "needs_planner": true
+    },
+    {
+      "id": "p18",
+      "query": "Show me transactions over $25,000",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_amount_min": "25000",
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p19",
+      "query": "Structuring search previous 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "structuring",
+      "tools_invoked": ["feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p20",
+      "query": "Is id 777 suspicious?",
+      "expected_intent": "entity_investigation",
+      "expected_route": "full_investigation",
+      "expected_customer_ids": ["777"],
+      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
+      "tools_skipped": ["eda"],
+      "expect_clarification": false
+    },
+    {
+      "id": "bad1",
+      "query": "Is customer ID !!!bad!!! suspicious?",
+      "expected_intent": "entity_investigation",
+      "expected_route": "full_investigation",
+      "expect_clarification": true,
+      "note": "invalid id should not invent a match"
+    },
+    {
+      "id": "bad2",
+      "query": "something vague about money",
+      "expected_intent": "broad_exploration",
+      "expect_clarification": true,
+      "note": "low confidence must not silently broaden"
+    },
+    {
+      "id": "bad3",
+      "query": "around last week maybe?",
+      "expected_intent": "broad_exploration",
+      "expect_clarification": true
+    },
+    {
+      "id": "p21",
+      "query": "Feature comparison for customer 42 this month",
+      "expected_intent": "feature_comparison",
+      "expected_route": "feature_only",
+      "expected_customer_ids": ["42"],
+      "expect_relative_date": "this_month",
+      "tools_invoked": ["feature_engineering"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p22",
+      "query": "Show me transactions over $10,000 in the last 7 days",
+      "expected_intent": "simple_lookup",
+      "expected_route": "simple_lookup",
+      "expected_amount_min": "10000",
+      "expect_relative_date": "last_7_days",
+      "tools_invoked": ["sql_lookup"],
+      "tools_skipped": ["eda", "anomaly_detection"],
+      "expect_clarification": false
+    },
+    {
+      "id": "p23",
+      "query": "Dataset suspicious activity overview",
+      "expected_intent": "broad_exploration",
+      "expected_route": "full_investigation",
+      "tools_invoked": ["eda"],
+      "tools_skipped": [],
+      "expect_clarification": false
+    }
+  ]
+}
