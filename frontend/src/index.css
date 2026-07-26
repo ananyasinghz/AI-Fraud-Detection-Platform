@@ -33,6 +33,20 @@
   padding: 0;
 }
 
+.nav-item {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+.nav-item:focus,
+.nav-item:focus-visible,
+.nav-item:active {
+  outline: none;
+}
+
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
@@ -45,6 +59,17 @@ body {
 input, button, textarea, select {
   font-family: inherit;
   font-size: inherit;
+}
+.nav-item.active,
+.nav-item.active:focus,
+.nav-item.active:active,
+.nav-item.active:focus-visible {
+  background-color: #18181b;
+  color: #515151;
+}
+
+.nav-item.active svg {
+  color: #515151;
 }
 
 /* Base Layout */
