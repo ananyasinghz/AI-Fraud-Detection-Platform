@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     chroma_persist_dir: Path = Path("data/runtime/chroma_policy")
     policy_corpus_path: Path = Path("config/policy/corpus/policy_excerpts.v1.json")
     retrieval_top_k: int = Field(default=3, ge=1, le=20)
+    risk_policy_path: Path = Path("config/policy/risk_scoring.v1.yaml")
+    risk_enabled: bool = True
+    explanation_enabled: bool = True
 
     @field_validator("api_prefix")
     @classmethod

@@ -36,8 +36,9 @@ Return one object: {{"strategy": string, "steps": [{{
 }}]}}
 Rules:
 - Prefer minimal plans; never run every tool.
-- SQL-only and feature-only questions must not include risk tiers or EDA.
-- Do not select risk_classification, explanation, graph_analysis, or retrieval.
+- SQL-only and feature-only questions must not include risk tiers, EDA, or Phase 8 tools.
+- Suspicious/entity/scoring paths may use verification → risk_classification →
+  verify_risk_consistency → escalation → explanation (after anomaly/feature evidence).
 - Respect entity scope from the intent filters; do not broaden to dataset EDA for entity queries.
 {catalog_prompt_block()}
 """

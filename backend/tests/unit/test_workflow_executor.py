@@ -79,7 +79,9 @@ def test_trace_summary_invoked_skipped_disjoint() -> None:
     assert summary.tools_skipped == []
 
 
-def test_dependency_skip_and_no_double_dispatch(tmp_path: Path) -> None:
+def test_dependency_skip_and_no_double_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'wf.db'}")
     Base.metadata.create_all(engine)
     plan = ValidatedPlan(
@@ -88,21 +90,55 @@ def test_dependency_skip_and_no_double_dispatch(tmp_path: Path) -> None:
         steps=[
             PlanStep(
                 step_id="a",
-                tool=ToolName.RISK_CLASSIFICATION,
-                operation="classify",
-                reason="stub required",
+                tool=ToolName.EDA,
+                operation="cohort_profile",
+                reason="required eda that will be forced to fail via monkeypatch",
                 required=True,
             ),
             PlanStep(
                 step_id="b",
-                tool=ToolName.EXPLANATION,
-                operation="explain",
-                reason="depends on risk",
+                tool=ToolName.FEATURE_ENGINEERING,
+                operation="compute_feature",
+                parameters={
+                    "feature_operation": "transaction_count",
+                    "entity_ids": ["C1"],
+                    "window_days": 30,
+                },
+                reason="depends on eda",
                 depends_on=["a"],
                 required=True,
             ),
         ],
     )
+
+    def boom(
+        tool: ToolName,
+        operation: str,
+        parameters: dict[str, Any],
+        context: ToolContext,
+        registry: ToolRegistry,
+    ) -> ToolResult:
+        del operation, parameters, registry
+        if tool is ToolName.EDA:
+            return make_result(
+                tool=tool,
+                operation="cohort_profile",
+                status=ToolStatus.FAILED,
+                scope=context.filters,
+                duration_ms=1,
+                provenance=ToolProvenance(source="eda", query_or_version="t"),
+                error=ToolError(code="BOOM", message="required failed", retryable=False),
+            )
+        return make_result(
+            tool=tool,
+            operation="compute_feature",
+            status=ToolStatus.SUCCESS,
+            scope=context.filters,
+            duration_ms=1,
+            provenance=ToolProvenance(source="feature", query_or_version="t"),
+        )
+
+    monkeypatch.setattr("backend.app.workflow.graph.run_tool_node", boom)
     with session_scope(session_factory(engine)) as session:
         context = ToolContext(
             session=session,
@@ -117,11 +153,10 @@ def test_dependency_skip_and_no_double_dispatch(tmp_path: Path) -> None:
         )
     assert outcome.status == "partial"
     skipped_tools = {item.tool for item in outcome.state.tools_skipped}
-    assert ToolName.RISK_CLASSIFICATION in skipped_tools
-    assert ToolName.EXPLANATION in skipped_tools
+    assert ToolName.EDA in skipped_tools
+    assert ToolName.FEATURE_ENGINEERING in skipped_tools
     reasons = {item.tool: item.reason for item in outcome.state.tools_skipped}
-    assert "PHASE_8" in reasons[ToolName.RISK_CLASSIFICATION]
-    assert reasons[ToolName.EXPLANATION] in {"DEPENDENCY_SKIPPED", "DEPENDENCY_FAILED"}
+    assert reasons[ToolName.FEATURE_ENGINEERING] in {"DEPENDENCY_SKIPPED", "DEPENDENCY_FAILED"}
     terminal = [
         event
         for event in outcome.trace.events

@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.routes.alerts import router as alerts_router
 from backend.app.api.routes.customers import router as customers_router
@@ -15,6 +16,11 @@ from backend.app.core.request_id import RequestIdMiddleware
 from backend.app.data.database import engine_from_settings, session_factory
 from backend.app.services.scoring import build_scorer_factory
 from backend.app.tools.registry import TOOL_REGISTRY
+
+_DEMO_CORS_ORIGINS = (
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -32,6 +38,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.session_factory = session_factory(application.state.engine)
     application.state.tool_registry = TOOL_REGISTRY
     application.state.scorer_factory = build_scorer_factory(resolved)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(_DEMO_CORS_ORIGINS),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.add_middleware(RequestIdMiddleware)
     register_exception_handlers(application)
 

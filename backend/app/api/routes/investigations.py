@@ -14,12 +14,15 @@ from backend.app.api.dependencies import (
 from backend.app.core.errors import AppError
 from backend.app.data.models import Investigation
 from backend.app.domain.api import InvestigationCreateRequest, InvestigationResponse
+from backend.app.domain.charts import ChartSpec
 from backend.app.domain.evidence import ToolResult
 from backend.app.domain.intent import ParsedIntent
-from backend.app.domain.responses import ExecutionSummary
+from backend.app.domain.responses import ExecutionSummary, ResultItem
 from backend.app.services import investigations as investigation_service
 from backend.app.services.routing import resolve_for_execution
 from backend.app.tools.registry import UnknownToolError, UnknownToolOperationError
+from backend.app.workflow.execution_trace import ExecutionTrace
+from backend.app.workflow.nodes.aggregate import build_final_response
 
 router = APIRouter(tags=["investigations"])
 
@@ -33,6 +36,9 @@ def _to_response(
     parsed_intent: ParsedIntent | None = None,
     clarification: str | None = None,
     needs_planner: bool = False,
+    results: list[ResultItem] | None = None,
+    charts: list[ChartSpec] | None = None,
+    supporting_evidence: list[ToolResult] | None = None,
 ) -> InvestigationResponse:
     return InvestigationResponse(
         investigation_id=investigation.investigation_id,
@@ -48,6 +54,9 @@ def _to_response(
         parsed_intent=parsed_intent,
         clarification=clarification,
         needs_planner=needs_planner,
+        results=list(results or []),
+        charts=list(charts or []),
+        supporting_evidence=list(supporting_evidence or tool_results),
     )
 
 
@@ -78,6 +87,7 @@ async def create_investigation(
             "detected_intent": resolved.detected_intent,
         }
     )
+    request_id = getattr(request.state, "request_id", "unknown")
     context = build_tool_context(
         session=session,
         settings=settings,
@@ -85,6 +95,7 @@ async def create_investigation(
         filters=resolved.filters,
         as_of=body.as_of,
         request=request,
+        request_id=request_id,
     )
     try:
         investigation, outcome = investigation_service.create_investigation(
@@ -98,14 +109,18 @@ async def create_investigation(
         raise AppError(code="UNKNOWN_TOOL", message=str(exc), status_code=422) from exc
     except ValueError as exc:
         raise AppError(code="INVALID_PLAN", message=str(exc), status_code=422) from exc
+    final = outcome.final_response
     return _to_response(
         investigation,
         tool_results=outcome.state.tool_results,
-        execution_summary=outcome.final_response.execution_summary,
-        answer=outcome.final_response.answer,
+        execution_summary=final.execution_summary,
+        answer=final.answer,
         parsed_intent=resolved.parsed_intent,
         clarification=resolved.clarification,
         needs_planner=resolved.needs_planner,
+        results=list(final.results),
+        charts=list(final.charts),
+        supporting_evidence=list(final.supporting_evidence),
     )
 
 
@@ -116,14 +131,23 @@ async def get_investigation(
     settings: SettingsDep,
 ) -> InvestigationResponse:
     investigation = investigation_service.require_investigation(session, investigation_id)
-    results, summary, answer = investigation_service.load_investigation_payload(
+    outcome = investigation_service.outcome_from_stored(
         session,
         investigation,
-        data_dir=settings.data_dir,
+        settings.data_dir,
+    )
+    # Rebuild FlaggedResult/charts from stored tool envelopes via aggregate.
+    rebuilt = build_final_response(
+        outcome.state,
+        ExecutionTrace(),
+        status=investigation.status,
     )
     return _to_response(
         investigation,
-        tool_results=results,
-        execution_summary=summary,
-        answer=answer,
+        tool_results=outcome.state.tool_results,
+        execution_summary=outcome.final_response.execution_summary,
+        answer=outcome.final_response.answer,
+        results=list(rebuilt.results),
+        charts=list(rebuilt.charts),
+        supporting_evidence=list(rebuilt.supporting_evidence),
     )

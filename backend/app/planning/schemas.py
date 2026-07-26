@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from backend.app.domain.enums import ToolName
 
-# Phase 7 whitelist — implemented tools only (no Phase 8).
+# Phase 8 whitelist — implemented tools only.
 PLANNER_WHITELIST: frozenset[ToolName] = frozenset(
     {
         ToolName.SQL_LOOKUP,
@@ -15,17 +15,15 @@ PLANNER_WHITELIST: frozenset[ToolName] = frozenset(
         ToolName.ANOMALY_DETECTION,
         ToolName.GRAPH_ANALYSIS,
         ToolName.RETRIEVAL,
-    }
-)
-
-BLOCKED_TOOLS: frozenset[ToolName] = frozenset(
-    {
-        ToolName.RISK_CLASSIFICATION,
         ToolName.VERIFICATION,
+        ToolName.RISK_CLASSIFICATION,
         ToolName.ESCALATION,
         ToolName.EXPLANATION,
     }
 )
+
+# Reserved for future tools that must stay blocked even if enumerated elsewhere.
+BLOCKED_TOOLS: frozenset[ToolName] = frozenset()
 
 ALLOWED_OPERATIONS: dict[ToolName, frozenset[str]] = {
     ToolName.SQL_LOOKUP: frozenset({"get_customer", "get_transaction", "list_transactions"}),
@@ -49,6 +47,10 @@ ALLOWED_OPERATIONS: dict[ToolName, frozenset[str]] = {
         }
     ),
     ToolName.RETRIEVAL: frozenset({"search_policy"}),
+    ToolName.VERIFICATION: frozenset({"verify_evidence", "verify_risk_consistency"}),
+    ToolName.RISK_CLASSIFICATION: frozenset({"classify", "classify_customer"}),
+    ToolName.ESCALATION: frozenset({"recommend"}),
+    ToolName.EXPLANATION: frozenset({"explain"}),
 }
 
 
@@ -113,6 +115,35 @@ def build_capability_catalog() -> tuple[ToolCapability, ...]:
                 "and never states legal conclusions."
             ),
         ),
+        ToolCapability(
+            tool=ToolName.VERIFICATION,
+            operations=ALLOWED_OPERATIONS[ToolName.VERIFICATION],
+            param_hints=(
+                "verify_evidence: {}; verify_risk_consistency: {} "
+                "(depends on prior risk_classification)"
+            ),
+            when_to_use=("Stage 1 before risk; Stage 2 after risk. Required on suspicious paths."),
+        ),
+        ToolCapability(
+            tool=ToolName.RISK_CLASSIFICATION,
+            operations=ALLOWED_OPERATIONS[ToolName.RISK_CLASSIFICATION],
+            param_hints="classify|classify_customer: {entity_id?}",
+            when_to_use=("Points-model risk after verify_evidence; never LLM-authored risk."),
+        ),
+        ToolCapability(
+            tool=ToolName.ESCALATION,
+            operations=ALLOWED_OPERATIONS[ToolName.ESCALATION],
+            param_hints="recommend: {} after verify_risk_consistency",
+            when_to_use="Deterministic LOW→monitor / MEDIUM→review / HIGH→report mapping.",
+        ),
+        ToolCapability(
+            tool=ToolName.EXPLANATION,
+            operations=ALLOWED_OPERATIONS[ToolName.EXPLANATION],
+            param_hints="explain: {} after verified risk (+ escalation preferred)",
+            when_to_use=(
+                "Grounded explanation of verified risk only; template fallback if Ollama down."
+            ),
+        ),
     )
 
 
@@ -123,5 +154,10 @@ def catalog_prompt_block() -> str:
         lines.append(f"- {item.tool.value}: ops=[{ops}]")
         lines.append(f"  params: {item.param_hints}")
         lines.append(f"  when: {item.when_to_use}")
-    lines.append("Do not select risk_classification, explanation, verification, or escalation.")
+    lines.append(
+        "For SQL-only/feature-only plans omit verification/risk/escalation/explanation. "
+        "For suspicious/entity/scoring paths use: "
+        "verify_evidence → risk_classification → verify_risk_consistency → "
+        "escalation → explanation."
+    )
     return "\n".join(lines)

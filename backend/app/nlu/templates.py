@@ -13,6 +13,63 @@ from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import PlanStep, ValidatedPlan
 
 
+def _phase8_suspicious_chain(
+    *,
+    depends_on: list[str],
+    entity_id: str,
+    classify_op: str = "classify_customer",
+    required: bool = False,
+) -> list[PlanStep]:
+    """Evidence → risk → consistency → escalation → explanation (suspicious paths)."""
+    return [
+        PlanStep(
+            step_id="verify1",
+            tool=ToolName.VERIFICATION,
+            operation="verify_evidence",
+            parameters={},
+            reason="stage-1 evidence verification before risk",
+            depends_on=depends_on,
+            required=required,
+        ),
+        PlanStep(
+            step_id="risk1",
+            tool=ToolName.RISK_CLASSIFICATION,
+            operation=classify_op,
+            parameters={"entity_id": entity_id},
+            reason="points-model risk classification",
+            depends_on=["verify1"],
+            required=required,
+        ),
+        PlanStep(
+            step_id="consist1",
+            tool=ToolName.VERIFICATION,
+            operation="verify_risk_consistency",
+            parameters={},
+            reason="stage-2 risk consistency gate",
+            depends_on=["risk1"],
+            required=required,
+        ),
+        PlanStep(
+            step_id="esc1",
+            tool=ToolName.ESCALATION,
+            operation="recommend",
+            parameters={},
+            reason="deterministic escalation mapping",
+            depends_on=["consist1"],
+            required=required,
+        ),
+        PlanStep(
+            step_id="expl1",
+            tool=ToolName.EXPLANATION,
+            operation="explain",
+            parameters={},
+            reason="grounded explanation of verified risk",
+            depends_on=["esc1"],
+            required=required,
+        ),
+    ]
+
+
 def plan_sql_amount_lookup(filters: NormalizedFilters) -> ValidatedPlan:
     return ValidatedPlan(
         strategy="sql_amount_lookup",
@@ -115,6 +172,12 @@ def plan_pattern_search(parsed: ParsedIntent) -> ValidatedPlan:
                 reason="rules signal for structuring pattern",
                 depends_on=["feat1"],
             ),
+            *_phase8_suspicious_chain(
+                depends_on=["anom1"],
+                entity_id=entity_ids[0],
+                classify_op="classify_customer",
+                required=False,
+            ),
         ],
     )
 
@@ -169,6 +232,12 @@ def plan_entity_investigation(parsed: ParsedIntent) -> ValidatedPlan:
                 parameters={"query": "customer investigation due diligence"},
                 reason="optional policy context for reviewers",
                 depends_on=["sql1"],
+                required=False,
+            ),
+            *_phase8_suspicious_chain(
+                depends_on=["anom1"],
+                entity_id=customer_id,
+                classify_op="classify_customer",
                 required=False,
             ),
         ],
@@ -248,8 +317,27 @@ def plan_transaction_scoring(parsed: ParsedIntent) -> ValidatedPlan:
                 depends_on=["sql1"],
                 required=False,
             ),
+            *_phase8_suspicious_chain(
+                depends_on=["anom1"],
+                entity_id=txn_id,
+                classify_op="classify",
+                required=False,
+            ),
         ],
     )
+
+
+def plan_explanation_request(parsed: ParsedIntent) -> ValidatedPlan:
+    """Explanation with entity scope routes through investigation + grounded explain."""
+    if parsed.filters.customer_ids:
+        return plan_entity_investigation(parsed).model_copy(
+            update={"strategy": "explanation_entity"}
+        )
+    if parsed.filters.transaction_ids:
+        return plan_transaction_scoring(parsed).model_copy(
+            update={"strategy": "explanation_transaction"}
+        )
+    raise ValueError("explanation requires customer or transaction scope")
 
 
 def default_amount_filter() -> Decimal:

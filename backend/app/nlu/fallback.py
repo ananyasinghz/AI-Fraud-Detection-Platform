@@ -82,13 +82,19 @@ def extract_fallback(query: str) -> IntentDraft:
         relative_date = "last_7_days"
 
     # Mandatory / high-signal intents (order matters: specific before broad).
-    if "structuring" in lower or "smurfing" in lower:
-        pattern = PatternType.STRUCTURING if "structuring" in lower else PatternType.SMURFING
+    # Scrub extracted ids so tokens like "structuring" inside customer_ids do not
+    # force a dataset pattern_search over entity investigation.
+    scrubbed = lower
+    for customer_id in customer_ids:
+        scrubbed = scrubbed.replace(customer_id.lower(), " ")
+    if "structuring" in scrubbed or "smurfing" in scrubbed:
+        pattern = PatternType.STRUCTURING if "structuring" in scrubbed else PatternType.SMURFING
         return IntentDraft(
             intent=IntentType.PATTERN_SEARCH,
-            target_scope=TargetScope.COHORT,
+            target_scope=TargetScope.CUSTOMER if customer_ids else TargetScope.COHORT,
             confidence=0.86,
             pattern_type=pattern,
+            customer_ids=customer_ids[:1],
             relative_date=relative_date or "last_30_days",
             currency="USD",
             ambiguities=ambiguities,
@@ -162,12 +168,22 @@ def extract_fallback(query: str) -> IntentDraft:
         )
 
     if "explain" in lower or "why was" in lower or "explanation" in lower:
+        missing_scope = not customer_ids and not transaction_ids
         return IntentDraft(
             intent=IntentType.EXPLANATION_REQUEST,
-            target_scope=TargetScope.CUSTOMER if customer_ids else TargetScope.DATASET,
-            confidence=0.75,
+            target_scope=(
+                TargetScope.CUSTOMER
+                if customer_ids
+                else TargetScope.TRANSACTION
+                if transaction_ids
+                else TargetScope.DATASET
+            ),
+            confidence=0.8 if not missing_scope else 0.55,
             customer_ids=customer_ids[:1],
-            ambiguities=ambiguities or ["explanation_needs_phase_8"],
+            transaction_ids=transaction_ids[:1],
+            ambiguities=(
+                [*ambiguities, "missing_entity_for_explanation"] if missing_scope else ambiguities
+            ),
         )
 
     if (

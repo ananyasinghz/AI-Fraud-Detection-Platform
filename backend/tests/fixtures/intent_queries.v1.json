@@ -353,7 +353,7 @@
       "expected_customer_ids": [
         "12"
       ],
-      "expect_clarification": true,
+      "expect_clarification": false,
       "needs_planner": false
     },
     {

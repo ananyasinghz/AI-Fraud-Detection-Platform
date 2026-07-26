@@ -3,11 +3,12 @@ import { Sidebar } from './components/Sidebar';
 import { InvestigateView } from './views/InvestigateView';
 import { AlertsView } from './views/AlertsView';
 import { CustomersView } from './views/CustomersView';
-import { api } from './services/api';
+import { api, DEMO_AS_OF } from './services/api';
 
 function App() {
   const [currentView, setCurrentView] = useState<'investigate' | 'alerts' | 'customers'>('investigate');
   const [openAlertsCount, setOpenAlertsCount] = useState(0);
+  const [apiLabel, setApiLabel] = useState('checking…');
 
   const updateAlertsBadge = async () => {
     try {
@@ -21,6 +22,9 @@ function App() {
 
   useEffect(() => {
     updateAlertsBadge();
+    api.getHealth()
+      .then((h) => setApiLabel(`Operational (${h.environment || h.status})`))
+      .catch(() => setApiLabel('Unavailable — start FastAPI on :8000'));
   }, []);
 
   const renderActiveView = () => {
@@ -51,22 +55,20 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Sidebar Navigation */}
-      <Sidebar 
-        currentView={currentView} 
-        onViewChange={setCurrentView} 
-        openAlertsCount={openAlertsCount} 
+      <Sidebar
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        openAlertsCount={openAlertsCount}
       />
 
-      {/* Main Content Area */}
       <main className="main-content">
         <header className="top-header">
           <h1 className="view-title">{getHeaderTitle()}</h1>
           <div className="system-status">
             <span className="status-dot"></span>
-            <span>API Status: Operational (mock-api)</span>
+            <span>API Status: {apiLabel}</span>
             <span style={{ margin: '0 8px', color: 'var(--border-color)' }}>|</span>
-            <span>As-Of: 2026-07-25 17:02 UTC</span>
+            <span>Demo as-of: {DEMO_AS_OF.replace('T', ' ').replace('Z', ' UTC')}</span>
           </div>
         </header>
 

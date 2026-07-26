@@ -125,14 +125,17 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onAlertUpdated }) => {
     );
   };
 
-  // Validation helpers for transitions
   const canTransitionTo = (target: Alert['status']) => {
     if (!selectedAlert) return false;
     const current = selectedAlert.status;
-    if (current === 'open' && target === 'in_review') return true;
-    if (current === 'in_review' && (target === 'escalated' || target === 'dismissed')) return true;
-    if ((current === 'escalated' || current === 'dismissed') && target === 'closed') return true;
-    return false;
+    const allowed: Record<Alert['status'], Alert['status'][]> = {
+      open: ['in_review', 'escalated', 'dismissed', 'closed'],
+      in_review: ['escalated', 'dismissed', 'closed'],
+      escalated: ['in_review', 'dismissed', 'closed'],
+      dismissed: ['closed'],
+      closed: [],
+    };
+    return allowed[current]?.includes(target) ?? false;
   };
 
   return (
@@ -221,21 +224,34 @@ export const AlertsView: React.FC<AlertsViewProps> = ({ onAlertUpdated }) => {
                   </div>
                 </div>
 
-                {/* Evidence table */}
+                {/* Backend evidence snapshot (Phase 8 escalation) */}
                 <div>
-                  <div className="detail-section-title">Verified indicator evidence</div>
-                  {renderEvidenceDetails(selectedAlert.supporting_evidence)}
+                  <div className="detail-section-title">Evidence snapshot</div>
+                  <div className="mono-cell" style={{ fontSize: '12px' }}>
+                    {selectedAlert.evidence_snapshot_ref || '—'}
+                  </div>
+                  {selectedAlert.supporting_evidence.length > 0 && (
+                    <div style={{ marginTop: '8px' }}>
+                      {renderEvidenceDetails(selectedAlert.supporting_evidence)}
+                    </div>
+                  )}
                 </div>
 
-                {/* Reasons List */}
+                {/* Reasons / triggers from linked investigation (when present) */}
                 <div>
                   <div className="detail-section-title">Primary triggers</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {selectedAlert.results.map((r, idx) => (
-                      <div key={idx} className="reason-item mono-cell" style={{ fontSize: '12px' }}>
-                        · {r.result_type === 'flagged' ? r.reasons.join(', ') : r.summary}
+                    {selectedAlert.results.length === 0 ? (
+                      <div className="mono-cell" style={{ fontSize: '12px', opacity: 0.7 }}>
+                        See investigation via evidence snapshot; disposition history below.
                       </div>
-                    ))}
+                    ) : (
+                      selectedAlert.results.map((r, idx) => (
+                        <div key={idx} className="reason-item mono-cell" style={{ fontSize: '12px' }}>
+                          · {r.result_type === 'flagged' ? r.reasons.join(', ') : r.summary}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 

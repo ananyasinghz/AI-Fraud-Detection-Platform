@@ -13,9 +13,14 @@ from backend.app.tools.context import ToolContext
 from backend.app.tools.eda.profiling import handle_eda
 from backend.app.tools.features.tool import handle_feature_engineering
 from backend.app.tools.graph.tool import handle_graph_analysis
+from backend.app.tools.phase8 import (
+    handle_escalation,
+    handle_explanation,
+    handle_risk_classification,
+    handle_verification,
+)
 from backend.app.tools.retrieval.tool import handle_retrieval
 from backend.app.tools.sql.lookup import handle_sql_lookup
-from backend.app.tools.stubs import handle_explanation, handle_risk_classification
 
 ToolHandler = Callable[[ToolContext, str, dict[str, Any]], ToolResult]
 
@@ -85,6 +90,7 @@ class ToolRegistry:
                     parameters=dict(step.parameters),
                 )
                 results.append(result)
+                context.prior_results = list(results)
                 completed.add(step.step_id)
                 del pending[step.step_id]
         return results
@@ -138,9 +144,19 @@ def build_tool_registry() -> ToolRegistry:
         frozenset({"search_policy"}),
     )
     registry.register(
+        ToolName.VERIFICATION,
+        handle_verification,
+        frozenset({"verify_evidence", "verify_risk_consistency"}),
+    )
+    registry.register(
         ToolName.RISK_CLASSIFICATION,
         handle_risk_classification,
-        frozenset({"classify"}),
+        frozenset({"classify", "classify_customer"}),
+    )
+    registry.register(
+        ToolName.ESCALATION,
+        handle_escalation,
+        frozenset({"recommend"}),
     )
     registry.register(
         ToolName.EXPLANATION,

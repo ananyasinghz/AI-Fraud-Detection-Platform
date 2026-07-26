@@ -21,12 +21,12 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
   const timerRef = useRef<any | null>(null);
 
   const exampleQueries = [
-    { text: 'Find structuring patterns in the last 30 days', label: '1. Structuring Patterns (Full Investigate)' },
-    { text: 'Which customers made 10+ transactions under $10,000?', label: '2. 10+ Tx Under $10k (SQL Threshold)' },
-    { text: 'Is customer ID 4521 suspicious?', label: '3. Customer C-4521 Profile (Full Investigate)' },
-    { text: 'Did customer 123 suddenly increase spending this month?', label: '4. Spending Spike (Feature Only)' },
-    { text: 'Show me transactions over $10,000', label: '5. Tx Over $10k (SQL Direct Filter)' },
-    { text: 'Analyse this dataset for suspicious activity', label: '6. Bulk Dataset Sweep (Full Investigate)' }
+    { text: 'Show me transactions over $10,000', label: '1. SQL-only amount filter' },
+    { text: 'Which customers made 10+ transactions under $10,000?', label: '2. Threshold aggregation' },
+    { text: 'Did customer cus-dev-42-spending-increase-00 suddenly increase spending this month?', label: '3. Feature-only spending' },
+    { text: 'Find structuring patterns for customer cus-dev-42-structuring-00 in the last 30 days', label: '4. Structuring (features+rules)' },
+    { text: 'Is customer ID cus-dev-42-structuring-00 suspicious?', label: '5. Entity investigation' },
+    { text: 'Analyse this dataset for suspicious activity', label: '6. Broad EDA exploration' },
   ];
 
   useEffect(() => {
@@ -151,8 +151,13 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
           else if (ref.json_path === '$.velocity_index') val = String(toolResult.data.velocity_index ?? '—');
           else if (ref.json_path === '$.occupation_deviation_score') val = String(toolResult.data.occupation_deviation_score ?? '—');
           else if (ref.json_path === '$.ml_score') val = String(toolResult.data.ml_score ?? '—');
-          else if (ref.json_path === '$.records') val = toolResult.data.records ? `${toolResult.data.records.length} records matched` : '—';
-          else if (ref.json_path === '$.matches') val = toolResult.data.matches ? `${toolResult.data.matches.length} aggregation rows` : '—';
+          else if (ref.json_path === '$.records') {
+            const records = toolResult.data.records;
+            val = Array.isArray(records) ? `${records.length} records matched` : '—';
+          } else if (ref.json_path === '$.matches') {
+            const matches = toolResult.data.matches;
+            val = Array.isArray(matches) ? `${matches.length} aggregation rows` : '—';
+          }
           else if (ref.json_path === '$.total_transactions') val = String(toolResult.data.total_transactions ?? '—');
           else if (ref.json_path === '$.total_flagged_entities') val = String(toolResult.data.total_flagged_entities ?? '—');
 
@@ -297,8 +302,26 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
     );
   };
 
+  const downloadJson = () => {
+    if (!response) return;
+    const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `investigation-${response.request_id}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Determine if risk/recommendation columns are required based on results contents
   const hasRiskColumns = response?.results && response.results.some(r => r.result_type === 'flagged');
+  const fallbackHints = [
+    ...(response?.execution_summary?.fallbacks || []),
+    ...(response?.execution_summary?.warnings || []),
+  ];
+  const ollamaHint = fallbackHints.some(
+    (w) => /ollama|fallback|planner/i.test(String(w)),
+  );
 
   return (
     <div className="view-container">
@@ -328,8 +351,14 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
         )}
 
         {!isRunning && response && (
-          <div className="execution-status-bar">
-            <span className="status-label-done">Done in {elapsedTime || 1.1}s</span>
+          <div className="execution-status-bar" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <span className="status-label-done">
+              {response.status || 'completed'} in {elapsedTime || '—'}s
+            </span>
+            <button type="button" className="suggestion-btn" onClick={downloadJson} style={{ padding: '2px 8px' }}>
+              <FileText size={12} style={{ display: 'inline', marginRight: 4 }} />
+              Export JSON
+            </button>
           </div>
         )}
       </div>
@@ -377,8 +406,30 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
       {error && (
         <div className="error-banner">
           <AlertCircle size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
-          Network error: {error}
+          {error}
         </div>
+      )}
+
+      {response?.clarification && (
+        <div className="error-banner" style={{ background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412' }}>
+          Clarification required: {response.clarification}
+        </div>
+      )}
+
+      {response?.status === 'partial' && (
+        <div className="error-banner" style={{ background: '#fffbeb', borderColor: '#fcd34d', color: '#92400e' }}>
+          Partial result — some required or optional tools failed or were skipped. See Execution Summary.
+        </div>
+      )}
+
+      {ollamaHint && (
+        <div className="error-banner" style={{ background: '#f0f9ff', borderColor: '#7dd3fc', color: '#075985' }}>
+          Deterministic fallback path in use (Ollama unavailable or planner fallback). Tool traces remain authoritative.
+        </div>
+      )}
+
+      {!isRunning && response && response.results.length === 0 && !response.clarification && (
+        <div className="empty-state">No result rows — informational answer only. See answer text and tool evidence below.</div>
       )}
 
       {/* Execution Summary Panel */}

@@ -12,6 +12,15 @@ from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import PlanStep, ValidatedPlan
 from backend.app.planning.schemas import ALLOWED_OPERATIONS, BLOCKED_TOOLS, PLANNER_WHITELIST
 
+_PHASE8_CHAIN = frozenset(
+    {
+        ToolName.VERIFICATION,
+        ToolName.RISK_CLASSIFICATION,
+        ToolName.ESCALATION,
+        ToolName.EXPLANATION,
+    }
+)
+
 
 @dataclass(frozen=True)
 class ValidationResult:
@@ -57,6 +66,7 @@ def validate_plan_semantics(
 
     reasons: list[str] = []
     tools_used: set[ToolName] = set()
+    by_id = {step.step_id: step for step in candidate.steps}
     for step in candidate.steps:
         tools_used.add(step.tool)
         if step.tool in BLOCKED_TOOLS or step.tool not in PLANNER_WHITELIST:
@@ -85,6 +95,8 @@ def validate_plan_semantics(
             if mode not in {None, "rules_only", "ml_only", "hybrid"}:
                 reasons.append(f"invalid_anomaly_mode:{mode}")
 
+        reasons.extend(_phase8_dependency_reasons(step, by_id))
+
     # Over-broad EDA on entity-scoped investigations.
     entity_scoped = (
         parsed.target_scope in {TargetScope.CUSTOMER, TargetScope.ACCOUNT, TargetScope.TRANSACTION}
@@ -109,6 +121,15 @@ def validate_plan_semantics(
     if parsed.intent is IntentType.FEATURE_COMPARISON and ToolName.EDA in tools_used:
         reasons.append("eda_not_allowed_for_feature_comparison")
 
+    # Prefer templates: SQL-only / feature-only must omit Phase 8 chain.
+    informational = parsed.intent in {
+        IntentType.SIMPLE_LOOKUP,
+        IntentType.FEATURE_COMPARISON,
+        IntentType.THRESHOLD_AGGREGATION,
+    }
+    if informational and tools_used & _PHASE8_CHAIN:
+        reasons.append("phase8_not_allowed_for_informational_intent")
+
     # Graph requires entity/cohort scope except broad exploration.
     if ToolName.GRAPH_ANALYSIS in tools_used:
         has_entity = bool(parsed.filters.customer_ids or parsed.filters.account_ids)
@@ -123,6 +144,40 @@ def validate_plan_semantics(
     if reasons:
         return _reject(*reasons)
     return ValidationResult(plan=candidate, reasons=())
+
+
+def _phase8_dependency_reasons(
+    step: PlanStep,
+    by_id: dict[str, PlanStep],
+) -> list[str]:
+    """Stage 2 / escalation / explanation must hang off verified risk chain."""
+    dep_tools = {by_id[dep].tool for dep in step.depends_on if dep in by_id}
+    dep_ops = {(by_id[dep].tool, by_id[dep].operation) for dep in step.depends_on if dep in by_id}
+
+    if (
+        step.tool is ToolName.RISK_CLASSIFICATION
+        and (ToolName.VERIFICATION, "verify_evidence") not in dep_ops
+        and ToolName.VERIFICATION not in dep_tools
+    ):
+        return ["risk_requires_verify_evidence"]
+    if (
+        step.tool is ToolName.VERIFICATION
+        and step.operation == "verify_risk_consistency"
+        and ToolName.RISK_CLASSIFICATION not in dep_tools
+    ):
+        return ["consistency_requires_risk_classification"]
+    if (
+        step.tool is ToolName.ESCALATION
+        and (ToolName.VERIFICATION, "verify_risk_consistency") not in dep_ops
+    ):
+        return ["escalation_requires_risk_consistency"]
+    if step.tool is ToolName.EXPLANATION:
+        has_consistency = (ToolName.VERIFICATION, "verify_risk_consistency") in dep_ops
+        has_risk = ToolName.RISK_CLASSIFICATION in dep_tools
+        has_escalation = ToolName.ESCALATION in dep_tools
+        if not (has_consistency or has_risk or has_escalation):
+            return ["explanation_requires_verified_risk"]
+    return []
 
 
 def steps_from_raw(raw_steps: list[dict[str, Any]]) -> list[PlanStep]:

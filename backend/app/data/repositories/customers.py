@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.data.models import Customer, CustomerProfile
@@ -20,6 +20,20 @@ class CustomerRepository:
 
     def get_by_id(self, customer_id: str) -> Customer | None:
         return self._session.get(Customer, customer_id)
+
+    def list_customers(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Customer], int]:
+        total = self._session.scalar(select(func.count()).select_from(Customer)) or 0
+        rows = list(
+            self._session.scalars(
+                select(Customer).order_by(Customer.customer_id.asc()).offset(offset).limit(limit)
+            ).all()
+        )
+        return rows, int(total)
 
     def add_profile(self, profile: CustomerProfile) -> None:
         conditions = [

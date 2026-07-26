@@ -16,7 +16,6 @@ from backend.app.policy.config import load_policy_config
 from backend.app.tools.context import ToolContext
 from backend.app.tools.registry import (
     TOOL_REGISTRY,
-    UnknownToolError,
     UnknownToolOperationError,
 )
 
@@ -39,7 +38,7 @@ def test_registry_rejects_unknown_tool_and_operation(tmp_path: Path) -> None:
     Base.metadata.create_all(engine)
     with session_scope(session_factory(engine)) as session:
         context = _context(session)
-        with pytest.raises(UnknownToolError):
+        with pytest.raises(UnknownToolOperationError):
             TOOL_REGISTRY.dispatch(ToolName.VERIFICATION, "run", context=context)
         with pytest.raises(UnknownToolOperationError):
             TOOL_REGISTRY.dispatch(ToolName.GRAPH_ANALYSIS, "run", context=context)
@@ -47,7 +46,7 @@ def test_registry_rejects_unknown_tool_and_operation(tmp_path: Path) -> None:
             TOOL_REGISTRY.dispatch(ToolName.SQL_LOOKUP, "drop_table", context=context)
 
 
-def test_stub_tools_skip_with_phase_8_reason(tmp_path: Path) -> None:
+def test_phase8_tools_registered_and_require_verified_risk(tmp_path: Path) -> None:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'stub.db'}")
     Base.metadata.create_all(engine)
     with session_scope(session_factory(engine)) as session:
@@ -62,12 +61,12 @@ def test_stub_tools_skip_with_phase_8_reason(tmp_path: Path) -> None:
             "explain",
             context=context,
         )
-        assert risk.status is ToolStatus.SKIPPED
-        assert "PHASE_8_NOT_IMPLEMENTED" in risk.warnings
+        assert risk.status is ToolStatus.SUCCESS
         assert risk.duration_ms >= 0
         assert risk.provenance.source == "risk_classification"
-        assert explanation.status is ToolStatus.SKIPPED
-        assert "PHASE_8_NOT_IMPLEMENTED" in explanation.warnings
+        assert explanation.status is ToolStatus.FAILED
+        assert explanation.error is not None
+        assert explanation.error.code == "MISSING_VERIFIED_RISK"
 
 
 def test_execute_plan_orders_dependencies(tmp_path: Path) -> None:

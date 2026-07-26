@@ -103,6 +103,10 @@ class GraphExecutor:
         context: ToolContext,
     ) -> None:
         state.current_step_id = step.step_id
+        # Phase 8 tools read prior successful/partial tool envelopes from context.
+        context.prior_results = list(state.tool_results)
+        context.request_id = state.request_id
+        context.investigation_id = state.investigation_id
         logger.info(
             "workflow step start",
             extra={

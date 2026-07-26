@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 
 from backend.app.domain.base import ContractModel, is_timezone_aware
+from backend.app.domain.charts import ChartSpec
 from backend.app.domain.enums import (
     EntityType,
     EscalationAction,
@@ -17,7 +18,7 @@ from backend.app.domain.evidence import ToolResult
 from backend.app.domain.filters import NormalizedFilters
 from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import ValidatedPlan
-from backend.app.domain.responses import ExecutionSummary
+from backend.app.domain.responses import ExecutionSummary, ResultItem
 
 AlertStatus = Literal["open", "in_review", "escalated", "dismissed", "closed"]
 
@@ -50,6 +51,10 @@ class QueryResponse(ContractModel):
     route: RouteType | None = None
     clarification: str | None = None
     needs_planner: bool = False
+    # Phase 9: FinalResponse fields so the UI matches the workflow aggregate exactly.
+    results: list[ResultItem] = Field(default_factory=list, max_length=1000)
+    charts: list[ChartSpec] = Field(default_factory=list, max_length=50)
+    supporting_evidence: list[ToolResult] = Field(default_factory=list)
 
 
 class InvestigationCreateRequest(ContractModel):
@@ -83,12 +88,22 @@ class InvestigationResponse(ContractModel):
     parsed_intent: ParsedIntent | None = None
     clarification: str | None = None
     needs_planner: bool = False
+    results: list[ResultItem] = Field(default_factory=list, max_length=1000)
+    charts: list[ChartSpec] = Field(default_factory=list, max_length=50)
+    supporting_evidence: list[ToolResult] = Field(default_factory=list)
 
 
 class CustomerResponse(ContractModel):
     customer_id: str
     created_at: datetime
     status: str
+
+
+class CustomerListResponse(ContractModel):
+    items: list[CustomerResponse] = Field(default_factory=list)
+    total: int = Field(ge=0)
+    limit: int = Field(ge=1, le=500)
+    offset: int = Field(ge=0)
 
 
 class TransactionResponse(ContractModel):

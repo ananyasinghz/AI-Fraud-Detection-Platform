@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import assert_never
+
 from backend.app.domain.enums import IntentType, ToolName
 from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import PlanStep, ValidatedPlan
@@ -52,8 +54,12 @@ def safe_template_for_intent(
     if intent is IntentType.BROAD_EXPLORATION:
         return _retag(templates.plan_broad_exploration(), planner_version)
 
-    # Explanation and unknown intents have no safe Phase 6 template.
-    return None
+    if intent is IntentType.EXPLANATION_REQUEST:
+        if not filters.customer_ids and not filters.transaction_ids:
+            return None
+        return _retag(templates.plan_explanation_request(parsed), planner_version)
+
+    assert_never(intent)
 
 
 def _retag(plan: ValidatedPlan, planner_version: str) -> ValidatedPlan:

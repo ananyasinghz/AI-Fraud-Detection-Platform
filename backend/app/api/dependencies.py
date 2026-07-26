@@ -81,6 +81,8 @@ def build_tool_context(
     filters: NormalizedFilters,
     as_of: datetime,
     request: Request,
+    request_id: str | None = None,
+    investigation_id: str | None = None,
 ) -> ToolContext:
     return ToolContext(
         session=session,
@@ -89,6 +91,8 @@ def build_tool_context(
         filters=filters,
         as_of=as_of,
         scorer_factory=get_scorer_factory(request),
+        request_id=request_id or getattr(request.state, "request_id", None),
+        investigation_id=investigation_id,
     )
 
 

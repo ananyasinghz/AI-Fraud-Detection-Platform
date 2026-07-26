@@ -58,7 +58,7 @@ def _parsed(
     )
 
 
-def test_validator_rejects_unknown_and_phase8_tools() -> None:
+def test_validator_rejects_unknown_and_informational_phase8() -> None:
     parsed = _parsed(IntentType.SIMPLE_LOOKUP, amount_min=Decimal("10000"))
     bad = {
         "strategy": "bad_plan",
@@ -75,7 +75,9 @@ def test_validator_rejects_unknown_and_phase8_tools() -> None:
     }
     result = validate_plan_semantics(bad, parsed=parsed, planner_version="t.v1")
     assert not result.ok
-    assert any("tool_not_whitelisted" in r for r in result.reasons)
+    assert any(
+        "phase8_not_allowed" in r or "risk_requires_verify_evidence" in r for r in result.reasons
+    )
 
     unknown_op = {
         "strategy": "bad_op",
@@ -93,6 +95,28 @@ def test_validator_rejects_unknown_and_phase8_tools() -> None:
     result2 = validate_plan_semantics(unknown_op, parsed=parsed, planner_version="t.v1")
     assert not result2.ok
     assert any("unknown_operation" in r for r in result2.reasons)
+
+    orphan_explain = {
+        "strategy": "orphan",
+        "planner_version": "t.v1",
+        "steps": [
+            {
+                "step_id": "e1",
+                "tool": "explanation",
+                "operation": "explain",
+                "parameters": {},
+                "reason": "no evidence",
+            }
+        ],
+    }
+    entity = _parsed(
+        IntentType.ENTITY_INVESTIGATION,
+        customer_ids=["C1"],
+        scope=TargetScope.CUSTOMER,
+    )
+    result3 = validate_plan_semantics(orphan_explain, parsed=entity, planner_version="t.v1")
+    assert not result3.ok
+    assert any("explanation_requires_verified_risk" in r for r in result3.reasons)
 
 
 def test_validator_rejects_over_broad_eda_on_entity_scope() -> None:

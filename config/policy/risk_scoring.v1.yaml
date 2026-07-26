@@ -1,0 +1,53 @@
+version: risk_scoring.v1
+disclaimer: >
+  Demonstration hackathon defaults only. Not legal advice, not a calibrated probability model,
+  and not a substitute for institutional SAR/STR decisioning.
+
+tiers:
+  low_max_exclusive: 40
+  medium_max_exclusive: 70
+
+severity_points:
+  low: 15
+  medium: 35
+  high: 55
+  critical: 75
+
+signal_points:
+  statistical_anomaly: 20
+  ml_threshold_cross: 25
+  graph_shared_device: 20
+  graph_circular_transfer: 30
+  graph_two_hop: 15
+
+data_sufficiency:
+  insufficient_penalty: 15
+  insufficient_confidence_cap: 0.45
+  full_confidence: 0.85
+  reduced_confidence: 0.55
+
+customer_rollup:
+  version: customer_rollup.v1
+  lookback_days: 90
+  half_life_days: 90
+  weights:
+    event_peak: 0.40
+    pattern_breadth: 0.35
+    profile_score: 0.20
+    context_score: 0.05
+  rule_base_points:
+    low: 10
+    medium: 20
+    high: 35
+    critical: 50
+  profile_score_cap: 100
+  context_score_cap: 100
+  # Context alone cannot push composite into MEDIUM/HIGH without event/pattern support.
+  context_cannot_force_suspicious: true
+
+escalation:
+  LOW: monitor
+  MEDIUM: review
+  HIGH: report
+
+ml_flag_threshold: 0.5

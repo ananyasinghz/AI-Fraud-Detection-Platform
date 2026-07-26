@@ -150,6 +150,7 @@ Every execution summary records an explicit `simple_lookup`, `feature_only`, or 
 | Monitor/review/report | Escalation + Alert Lifecycle |
 | Inspectable agent decisions | State Graph execution trace |
 | Charts, tables, and metrics | EDA Tool + final response/frontend |
+| Live demo UI matching backend traces | React views ← enriched QueryResponse |
 
 ## Security and Safety Boundaries
 
@@ -167,10 +168,24 @@ The MVP is a local monorepo:
 - Python 3.11 and FastAPI backend
 - SQLite data store
 - local Ollama model for optional NLU/planning/explanation
-- React frontend in a later phase
+- React frontend (Phase 9) against live `/api/v1` with Vite proxy / CORS
 - optional Neo4j and ChromaDB extensions
 
 This baseline is suitable for a synthetic hackathon demonstration, not institutional production workloads.
+
+## Phase 8 runtime notes
+
+Implemented packages: `backend/app/evidence/`, `backend/app/risk/`, `backend/app/explanation/`,
+wired through `backend/app/tools/phase8.py` and the tool registry. Policy defaults live in
+`config/policy/risk_scoring.v1.yaml` and `docs/RISK_MODEL.md`. Aggregate responses may include
+`FlaggedResult` items after dual-gate verification; SQL/feature-only plans omit the Phase 8 chain.
+
+## Phase 9 demo notes
+
+`QueryResponse` / investigation payloads copy `results`, `charts`, and `supporting_evidence`
+from workflow `FinalResponse`. `GET /customers` lists sparse directory rows. CORS allows Vite
+origins. Demo default is Ollama off (`FRAUD_OLLAMA_ENABLED=false`). Frontend client:
+`frontend/src/services/api.ts`.
 
 ## Reconciliation Result
 
@@ -186,5 +201,6 @@ This architecture and `IMPLEMENTATION_ROADMAP.md` agree on:
 - query-aware invoked/skipped tool tracing
 - separate ML and AML evaluation tracks
 - alert lifecycle and honest false-positive benchmarking
+- demo frontend wired to live APIs
 
 The architecture's JSON snippets are explanatory, not permission to weaken the strict Phase 0 schemas. Raw requests do not contain model-detected intent, and plan dependencies refer to unique `step_id` values rather than ambiguous tool names. No Phase 0 contract may introduce Phase 1 business logic. Future architecture changes require an explicit version and corresponding contract/test updates.

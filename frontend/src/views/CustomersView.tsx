@@ -45,7 +45,7 @@ export const CustomersView: React.FC = () => {
     const query = searchId.trim().toUpperCase();
     if (!query) return;
 
-    const match = allCustomers.find(c => c.id.toUpperCase() === query || c.name.toUpperCase().includes(query));
+    const match = allCustomers.find(c => c.id.toUpperCase() === query || c.id.toUpperCase().includes(query));
     if (match) {
       setSelectedCustomerId(match.id);
       setError(null);
@@ -70,7 +70,7 @@ export const CustomersView: React.FC = () => {
           <input
             type="text"
             className="query-input"
-            placeholder="Search customer by ID or Name (e.g. C-4521, Sarah Jenkins)..."
+            placeholder="Search customer by ID (e.g. cus-dev-42-…)"
             value={searchId}
             onChange={(e) => setSearchId(e.target.value)}
           />
@@ -124,7 +124,7 @@ export const CustomersView: React.FC = () => {
               </div>
               <div className="profile-field">
                 <span className="profile-field-key">Legal Name</span>
-                <span className="profile-field-val">{customer.name}</span>
+                <span className="profile-field-val">{customer.name} <em style={{ color: 'var(--text-muted)', fontSize: 11 }}>(runtime id; no display name stored)</em></span>
               </div>
               <div className="profile-field">
                 <span className="profile-field-key">Country</span>

@@ -69,7 +69,7 @@ def create_investigation(
     request_id = request.request_id or f"req-{uuid4().hex}"
     existing = session.scalar(select(Investigation).where(Investigation.request_id == request_id))
     if existing is not None:
-        return existing, _outcome_from_stored(session, existing, settings.data_dir)
+        return existing, outcome_from_stored(session, existing, settings.data_dir)
 
     resolved = resolve_for_execution(
         query=request.query,
@@ -147,7 +147,7 @@ def load_investigation_payload(
     return _load_sidecar(data_dir, investigation.investigation_id), None, None
 
 
-def _outcome_from_stored(
+def outcome_from_stored(
     session: Session,
     investigation: Investigation,
     data_dir: Path,

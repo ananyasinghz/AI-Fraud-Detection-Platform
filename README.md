@@ -73,10 +73,57 @@ python -c "import sqlite3; c=sqlite3.connect('data/processed/fraud.db'); print(c
 
 The model API is `backend.app.ml.fraud_scorer.FraudScorer`. It requires exactly ordered `Time`, `V1`–`V28`, `Amount` fields; missing, extra, or reordered input fails loudly. `ml_score` is a ranking score, not a calibrated probability.
 
+## Demo (Phase 9 — clean clone)
+
+Judge-facing path uses **seed 42**, **Ollama off**, and the React Investigate / Alerts / Customers shell against live `/api/v1`.
+
+### 1. Backend + seed
+
+```powershell
+Copy-Item .env.example .env
+# Ensure FRAUD_OLLAMA_ENABLED=false (demo default)
+python scripts/prepare_demo.py --seed 42 --split dev
+uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+`prepare_demo.py` runs `alembic upgrade head`, generates the seed-42 runtime bundle if needed, and seeds SQLite idempotently. Demo queries use `as_of=2026-07-25T00:00:00Z` (catalog window).
+
+### 2. Frontend
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api` → `http://127.0.0.1:8000`. The header health badge should be green (`GET /api/v1/health`).
+
+Optional: set `VITE_API_BASE_URL=http://127.0.0.1:8000` if not using the proxy.
+
+### 3. Six clickable demo queries
+
+| # | Query chip | Expected trace (Ollama off) |
+|---|---|---|
+| 1 | Show me transactions over $10,000 | SQL-only (`sql_lookup`) |
+| 2 | Which customers made 10+ transactions under $10,000? | Threshold path (`sql_lookup`, optional count feature; no EDA/anomaly) |
+| 3 | Did customer `cus-dev-42-spending-increase-00` suddenly increase spending this month? | Feature-only |
+| 4 | Find structuring patterns for customer `cus-dev-42-structuring-00` in the last 30 days | Features + rules (+ Phase 8 when signals fire); no dataset EDA |
+| 5 | Is customer ID `cus-dev-42-structuring-00` suspicious? | Entity-scoped investigation; no dataset EDA |
+| 6 | Analyse this dataset for suspicious activity | Broad EDA exploration |
+
+Use **Export JSON** on Investigate for the live response. Alerts require a reason to dismiss/escalate. Customers list is sparse runtime IDs (no invented KYC).
+
+### 4. Held-out evaluation (optional)
+
+```powershell
+python -m backend.evaluation.heldout_fp_comparison --seed 99
+python scripts/measure_demo_latency.py
+```
+
 ## Run the API
 
 ```bash
-uvicorn backend.app.main:app --reload
+uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Health check:

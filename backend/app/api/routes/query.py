@@ -46,6 +46,7 @@ async def execute_query(
         filters=resolved.filters,
         as_of=body.as_of,
         request=request,
+        request_id=request_id,
     )
     try:
         outcome = investigation_service.execute_query_plan(
@@ -76,4 +77,7 @@ async def execute_query(
         route=resolved.route,
         clarification=resolved.clarification,
         needs_planner=resolved.needs_planner,
+        results=list(outcome.final_response.results),
+        charts=list(outcome.final_response.charts),
+        supporting_evidence=list(outcome.final_response.supporting_evidence),
     )

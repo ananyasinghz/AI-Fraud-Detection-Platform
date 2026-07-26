@@ -42,16 +42,26 @@ def route_parsed_intent(
     ambiguous = bool(parsed.ambiguities) and low_confidence
 
     if parsed.intent is IntentType.EXPLANATION_REQUEST:
+        if not filters.customer_ids and not filters.transaction_ids:
+            return RoutingDecision(
+                route=RouteType.FULL_INVESTIGATION,
+                filters=filters,
+                plan=None,
+                tools_invoked_expected=(),
+                tools_skipped_expected=(ToolName.EXPLANATION, ToolName.RISK_CLASSIFICATION),
+                clarification=(
+                    "Explanation requires a customer or transaction id so verified "
+                    "evidence can be grounded."
+                ),
+                needs_planner=False,
+            )
+        plan = templates.plan_explanation_request(parsed)
         return RoutingDecision(
             route=RouteType.FULL_INVESTIGATION,
             filters=filters,
-            plan=None,
-            tools_invoked_expected=(),
-            tools_skipped_expected=(
-                ToolName.EXPLANATION,
-                ToolName.RISK_CLASSIFICATION,
-            ),
-            clarification="Explanation requests require Phase 8; please provide a scoped lookup.",
+            plan=plan,
+            tools_invoked_expected=_expected_tools(plan),
+            tools_skipped_expected=(ToolName.EDA,),
             needs_planner=False,
         )
 
@@ -143,9 +153,11 @@ def route_parsed_intent(
 
     if parsed.intent is IntentType.PATTERN_SEARCH:
         plan = templates.plan_pattern_search(parsed)
+        # pattern_type is planning metadata, not a SQL/transaction predicate.
+        exec_filters = filters.model_copy(update={"pattern_type": None})
         return RoutingDecision(
             route=RouteType.FULL_INVESTIGATION,
-            filters=filters,
+            filters=exec_filters,
             plan=plan,
             tools_invoked_expected=_expected_tools(plan),
             tools_skipped_expected=(ToolName.EDA,),

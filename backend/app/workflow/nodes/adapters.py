@@ -1,4 +1,4 @@
-"""Map ToolName to registry dispatch (and Phase 7/8 skip stubs)."""
+"""Map ToolName to registry dispatch (Phase 8 tools are real handlers)."""
 
 from __future__ import annotations
 
@@ -13,16 +13,6 @@ from backend.app.tools.registry import (
     UnknownToolError,
     UnknownToolOperationError,
 )
-from backend.app.tools.stubs import handle_explanation, handle_risk_classification
-
-PHASE_8_TOOLS = frozenset(
-    {
-        ToolName.RISK_CLASSIFICATION,
-        ToolName.EXPLANATION,
-        ToolName.VERIFICATION,
-        ToolName.ESCALATION,
-    }
-)
 
 NODE_BY_TOOL: dict[ToolName, str] = {
     ToolName.SQL_LOOKUP: "sql_node",
@@ -31,10 +21,10 @@ NODE_BY_TOOL: dict[ToolName, str] = {
     ToolName.ANOMALY_DETECTION: "anomaly_detection_node",
     ToolName.GRAPH_ANALYSIS: "graph_analysis_node",
     ToolName.RETRIEVAL: "retrieval_node",
-    ToolName.RISK_CLASSIFICATION: "risk_node",
-    ToolName.EXPLANATION: "explanation_node",
     ToolName.VERIFICATION: "evidence_verification_node",
+    ToolName.RISK_CLASSIFICATION: "risk_node",
     ToolName.ESCALATION: "escalation_node",
+    ToolName.EXPLANATION: "explanation_node",
 }
 
 
@@ -68,13 +58,7 @@ def run_tool_node(
     context: ToolContext,
     registry: ToolRegistry,
 ) -> ToolResult:
-    """Invoke one plan step through the registry or a structured skip stub."""
-    if tool is ToolName.VERIFICATION or tool is ToolName.ESCALATION:
-        return _skipped_stub(tool, operation, context, "PHASE_8_NOT_IMPLEMENTED")
-    if tool is ToolName.RISK_CLASSIFICATION:
-        return handle_risk_classification(context, operation, parameters)
-    if tool is ToolName.EXPLANATION:
-        return handle_explanation(context, operation, parameters)
+    """Invoke one plan step through the registry."""
     try:
         return registry.dispatch(
             tool,

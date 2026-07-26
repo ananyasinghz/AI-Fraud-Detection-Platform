@@ -100,7 +100,7 @@ Free-text requests omit `plan`. Orchestration (`backend/app/services/routing.py`
    ambiguities to `RouteType`, merged `NormalizedFilters`, and a **preferred** template
    `ValidatedPlan`. When no template applies but the case is plannable (e.g. simple lookup by
    transaction id), returns `plan=None` with `needs_planner=true`. Low confidence, invalid IDs,
-   and explanation requests (Phase 8) clarify without invoking the planner.
+   and explanation requests without entity scope clarify without invoking the planner.
 5. **Templates** (`backend/app/nlu/templates.py`) — named deterministic plans for common intents.
    Example: “Show me transactions over $10,000” → SQL-only `list_transactions` (EDA/anomaly
    omitted). Templates are preferred over the dynamic planner when present.
@@ -130,15 +130,24 @@ error code `CLARIFICATION_REQUIRED`.
 | `chroma_persist_dir` | `FRAUD_CHROMA_PERSIST_DIR` | `data/runtime/chroma_policy` | Index persist root |
 | `policy_corpus_path` | `FRAUD_POLICY_CORPUS_PATH` | `config/policy/corpus/policy_excerpts.v1.json` | Committed corpus |
 | `retrieval_top_k` | `FRAUD_RETRIEVAL_TOP_K` | `3` | Default hit count |
+| `risk_policy_path` | `FRAUD_RISK_POLICY_PATH` | `config/policy/risk_scoring.v1.yaml` | Points/rollup policy |
+| `risk_enabled` | `FRAUD_RISK_ENABLED` | `true` | Off → Phase 8 tools `SKIPPED` |
+| `explanation_enabled` | `FRAUD_EXPLANATION_ENABLED` | `true` | Off → explanation template skip |
 
 ### Planner whitelist and validation
 
 Whitelist (schemas only): `sql_lookup`, `feature_engineering`, `eda`, `anomaly_detection`,
-`graph_analysis`, `retrieval`. Rejected at plan time: Phase 8 `risk_classification`,
-`explanation`, `verification`, `escalation`. Semantic checks reject unknown operations, missing
-entity parameters, over-broad EDA on entity-scoped intents, unbounded graph without scope (except
-broad exploration), and empty/oversized plans. Domain `ValidatedPlan` still rejects cycles and
-duplicate identical steps.
+`graph_analysis`, `retrieval`, `verification`, `risk_classification`, `escalation`,
+`explanation`. Semantic checks reject unknown operations, missing entity parameters, over-broad
+EDA on entity-scoped intents, unbounded graph without scope (except broad exploration), Phase 8
+tools on informational SQL/feature intents, Stage-2/escalation/explanation without the prior
+verification/risk dependency chain, and empty/oversized plans. Domain `ValidatedPlan` still
+rejects cycles and duplicate identical steps.
+
+Suspicious/entity/pattern/scoring templates append the optional chain
+`verify_evidence → risk_classification → verify_risk_consistency → escalation → explanation`
+(depends on anomaly). SQL-only / feature-only templates omit that chain. Explanation requests with
+entity scope reuse the investigation/scoring template; without scope they clarify.
 
 ### Phase 7 graph and retrieval
 
@@ -301,26 +310,42 @@ fallback when no DB run exists.
 ### Tool and HTTP contracts
 
 Registered tools (common `ToolResult` envelope): `sql_lookup`, `feature_engineering`, `eda`,
-`anomaly_detection`, `graph_analysis`, `retrieval`, plus Phase 8 stubs `risk_classification` and
-`explanation` that return `SKIPPED` with `PHASE_8_NOT_IMPLEMENTED`.
+`anomaly_detection`, `graph_analysis`, `retrieval`, `verification`, `risk_classification`,
+`escalation`, `explanation`. Phase 8 handlers implement evidence verification, points-model risk,
+customer rollup, consistency gate, deterministic escalation (idempotent alerts for review/report),
+and grounded explanation (Ollama optional + template fallback).
 
 Workflow skip reasons include `DEPENDENCY_FAILED`, `DEPENDENCY_SKIPPED`, `NODE_TIMEOUT`, and
 tool-local reasons. Required-tool failure/skip yields `partial`/`failed`; optional failure
 degrades and continues.
 
 - `POST /api/v1/query` — optional `plan`: if omitted, NL parse → route → template plan → graph;
-  if provided, Phase 4 manual-plan path. Returns `execution_summary` and optional NL fields.
+  if provided, Phase 4 manual-plan path. Returns `execution_summary`, `tool_results`, `answer`,
+  and Phase 9 enriched fields copied from the workflow `FinalResponse`: `results`, `charts`,
+  `supporting_evidence`.
 - `POST|GET /api/v1/investigations[/{id}]` — same optional-`plan` create path; retrieve with
-  DB-backed traces and summary.
-- `GET /api/v1/customers/{id}`, `GET /api/v1/transactions/{id}`
+  DB-backed traces and the same enriched FinalResponse fields.
+- `GET /api/v1/customers?limit=&offset=` — thin directory `{items,total,limit,offset}` from SQLite
+  (customer_id, status, created_at). Detail remains `GET /api/v1/customers/{id}` (sparse; no
+  invented KYC).
+- `GET /api/v1/transactions/{id}`
 - `POST /api/v1/transactions/{id}/score` — scores `ml_eligible` rows with resolvable
   `ml_feature_ref` (`fixture:<file>:<row>`); otherwise `skipped` with reason.
 - `GET|POST|PATCH /api/v1/alerts` — idempotent create, queue, detail, and audited transitions
-  through `open|in_review|escalated|dismissed|closed`.
+  through `open|in_review|escalated|dismissed|closed`. Investigation-driven `review`/`report`
+  alerts carry verified Phase 8 risk overlays; manual create may still use provisional severity
+  mapping.
+
+Browser demo: FastAPI `CORSMiddleware` allows Vite origins `http://127.0.0.1:5173` and
+`http://localhost:5173`. The React client (`frontend/src/services/api.ts`) maps live HTTP to the
+three UI views; Vite proxies `/api` → `:8000` unless `VITE_API_BASE_URL` is set.
 
 EDA may emit `ChartSpec` objects. Class/scenario label balance is skipped unless
 `allow_labels=true`, and runtime tables still never expose held-out labels. Aggregate responses
-are informational only until Phase 8 risk classification.
+emit `FlaggedResult` for dual-verified MEDIUM/HIGH (and LOW when explanation succeeded);
+informational queries without findings stay informational.
+
+See [`docs/RISK_MODEL.md`](RISK_MODEL.md) for frozen points/rollup defaults.
 
 ## Synthetic AML Bundles
 
