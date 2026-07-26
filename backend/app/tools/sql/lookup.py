@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import replace
 from typing import Any
 
 from backend.app.data.query_scope import QueryScope
@@ -84,6 +86,41 @@ def handle_sql_lookup(
                 "transactions": [_transaction_payload(item) for item in rows],
                 "scope_empty": scope.is_empty,
             },
+            duration_ms=timer.ms(),
+            provenance=provenance,
+        )
+
+    if operation == "count_by_customer":
+        minimum_count = int(parameters.get("minimum_count", 10))
+        # Aggregation needs a wider page than the default reviewer max_results=100.
+        filters = context.filters.model_copy(update={"max_results": 1000})
+        scope = QueryScope.from_filters(filters, as_of=context.as_of)
+        scope = replace(scope, limit=1000)
+        rows = TransactionRepository(context.session).list_scoped(scope)
+        counts = Counter(item.customer_id for item in rows)
+        matching = [
+            {"customer_id": customer_id, "transaction_count": count}
+            for customer_id, count in sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
+            if count >= minimum_count
+        ]
+        amount_max = (
+            str(context.filters.amount_max) if context.filters.amount_max is not None else None
+        )
+        return make_result(
+            tool=ToolName.SQL_LOOKUP,
+            operation=operation,
+            status=ToolStatus.SUCCESS,
+            scope=context.filters,
+            data={
+                "customers": matching,
+                "minimum_count": minimum_count,
+                "amount_max": amount_max,
+                "total_matching": len(matching),
+                "scoped_transaction_count": len(rows),
+                "scope_empty": scope.is_empty,
+                "query_limit_reached": len(rows) >= scope.limit,
+            },
+            warnings=(["QUERY_LIMIT_REACHED"] if len(rows) >= scope.limit else []),
             duration_ms=timer.ms(),
             provenance=provenance,
         )

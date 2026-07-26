@@ -165,6 +165,89 @@ def test_anomaly_skips_ml_for_ineligible_synthetic(tmp_path: Path) -> None:
         assert ml_payload["reason"] == "ML_INELIGIBLE"
 
 
+def test_anomaly_rules_only_fires_velocity_on_short_window_burst(tmp_path: Path) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'velocity.db'}")
+    Base.metadata.create_all(engine)
+    with session_scope(session_factory(engine)) as session:
+        _seed_basic(session)
+        start = AS_OF - timedelta(hours=2)
+        for offset in range(12):
+            session.add(
+                Transaction(
+                    transaction_id=f"TV-{offset}",
+                    customer_id="C1",
+                    account_id="A1",
+                    occurred_at=start + timedelta(minutes=offset * 4),
+                    amount_minor=20_000 + offset * 1_000,
+                    currency="USD",
+                    direction="debit",
+                    transaction_type="card_purchase",
+                    channel="ecommerce",
+                    country=None,
+                    ml_eligible=False,
+                    data_source="synthetic",
+                    seed_run_id="p3-tools",
+                )
+            )
+        session.flush()
+        context = _context(session)
+        result = TOOL_REGISTRY.dispatch(
+            ToolName.ANOMALY_DETECTION,
+            "detect",
+            context=context,
+            parameters={
+                "mode": "rules_only",
+                "entity_id": "C1",
+                "rule_ids": ["velocity.v1", "structuring.v1"],
+            },
+        )
+        assert result.status is ToolStatus.SUCCESS
+        rules_raw = result.data.get("rules")
+        assert isinstance(rules_raw, list)
+        fired_by_id: dict[str, object] = {}
+        for item in rules_raw:
+            assert isinstance(item, dict)
+            rule_id = item.get("rule_id")
+            assert isinstance(rule_id, str)
+            fired_by_id[rule_id] = item.get("fired")
+        assert "velocity.v1" in fired_by_id
+        assert fired_by_id["velocity.v1"] is True
+        assert "structuring.v1" in fired_by_id
+        assert fired_by_id["structuring.v1"] is False
+
+
+def test_anomaly_rules_only_evaluates_all_registered_bundles(tmp_path: Path) -> None:
+    engine = create_database_engine(f"sqlite:///{tmp_path / 'all-rules.db'}")
+    Base.metadata.create_all(engine)
+    with session_scope(session_factory(engine)) as session:
+        _seed_basic(session)
+        context = _context(session)
+        result = TOOL_REGISTRY.dispatch(
+            ToolName.ANOMALY_DETECTION,
+            "detect",
+            context=context,
+            parameters={"mode": "rules_only", "entity_id": "C1"},
+        )
+        assert result.status is ToolStatus.SUCCESS
+        rules_raw = result.data.get("rules")
+        assert isinstance(rules_raw, list)
+        rule_ids: set[str] = set()
+        for item in rules_raw:
+            assert isinstance(item, dict)
+            rule_id = item.get("rule_id")
+            assert isinstance(rule_id, str)
+            rule_ids.add(rule_id)
+        assert rule_ids == {
+            "high_risk_country.v1",
+            "profile_deviation.v1",
+            "rapid_cash_out.v1",
+            "round_numbers.v1",
+            "smurfing.v1",
+            "structuring.v1",
+            "velocity.v1",
+        }
+
+
 def test_anomaly_hybrid_with_ulb_fixture_without_scorer(tmp_path: Path) -> None:
     engine = create_database_engine(f"sqlite:///{tmp_path / 'hybrid.db'}")
     Base.metadata.create_all(engine)

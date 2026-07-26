@@ -211,6 +211,72 @@ def test_draft_sanitizes_invalid_enums_and_ids() -> None:
     assert any("invalid_customer_id" in item for item in parsed.ambiguities)
 
 
+def test_plan_pattern_search_is_typology_aware() -> None:
+    from backend.app.domain.enums import PatternType, TargetScope
+    from backend.app.domain.filters import NormalizedFilters
+    from backend.app.domain.intent import ParsedIntent
+    from backend.app.nlu.pattern_plans import spec_for_pattern
+    from backend.app.nlu.templates import plan_pattern_search
+
+    for pattern in PatternType:
+        spec = spec_for_pattern(pattern)
+        parsed = ParsedIntent(
+            intent=IntentType.PATTERN_SEARCH,
+            target_scope=TargetScope.CUSTOMER,
+            filters=NormalizedFilters(
+                customer_ids=["cus-1"],
+                pattern_type=pattern,
+                currency="USD",
+            ),
+            confidence=0.9,
+            parser_version="t",
+        )
+        plan = plan_pattern_search(parsed)
+        assert plan.strategy == spec.strategy
+        feat_ops = [
+            step.parameters.get("feature_operation")
+            for step in plan.steps
+            if step.tool is ToolName.FEATURE_ENGINEERING
+        ]
+        assert feat_ops == list(spec.feature_operations)
+        anom = next(step for step in plan.steps if step.tool is ToolName.ANOMALY_DETECTION)
+        if spec.rule_ids is None:
+            assert "rule_ids" not in anom.parameters
+        else:
+            assert anom.parameters.get("rule_ids") == list(spec.rule_ids)
+
+
+def test_pattern_search_without_customer_clarifies() -> None:
+    parsed = parse_intent(
+        AnalysisRequest(query="Find smurfing patterns in the last 30 days.", as_of=AS_OF),
+        settings=_settings(),
+    )
+    decision = route_parsed_intent(parsed, confidence_floor=0.55)
+    assert parsed.intent is IntentType.PATTERN_SEARCH
+    assert decision.plan is None
+    assert decision.clarification
+    assert "customer id" in decision.clarification.lower()
+
+
+def test_fallback_detects_all_pattern_keywords() -> None:
+    from backend.app.domain.enums import PatternType
+    from backend.app.nlu.fallback import extract_fallback
+
+    cases = [
+        ("Find velocity patterns for customer C1", PatternType.VELOCITY),
+        ("Find rapid cash-out for customer C1", PatternType.RAPID_CASH_OUT),
+        ("Find round number patterns for customer C1", PatternType.ROUND_NUMBER),
+        ("Find profile deviation for customer C1", PatternType.PROFILE_DEVIATION),
+        ("Find high-risk country patterns for customer C1", PatternType.HIGH_RISK_COUNTRY),
+        ("Find smurfing for customer C1", PatternType.SMURFING),
+        ("Find structuring for customer C1", PatternType.STRUCTURING),
+    ]
+    for query, expected in cases:
+        draft = extract_fallback(query)
+        assert draft.pattern_type is expected, query
+        assert draft.intent is IntentType.PATTERN_SEARCH
+
+
 def test_router_routes_and_templates_for_mandatory_family() -> None:
     from backend.app.nlu.templates import (
         plan_broad_exploration,
@@ -248,9 +314,12 @@ def test_router_routes_and_templates_for_mandatory_family() -> None:
         settings=_settings(),
     )
     assert plan_feature_only(parsed_feat).steps[0].tool is ToolName.FEATURE_ENGINEERING
+    assert len(plan_feature_only(parsed_feat).steps) == 2
+    assert plan_feature_only(parsed_feat).steps[1].parameters.get("window_role") == "prior"
     assert plan_pattern_search(parsed_feat).steps[0].tool is ToolName.FEATURE_ENGINEERING
     assert plan_entity_investigation(parsed_feat).steps[0].tool is ToolName.SQL_LOOKUP
     assert plan_threshold_aggregation(parsed_feat.filters).steps[0].tool is ToolName.SQL_LOOKUP
+    assert plan_threshold_aggregation(parsed_feat.filters).steps[0].operation == "count_by_customer"
     assert plan_simple_customer_lookup(parsed_feat).steps[0].tool is ToolName.SQL_LOOKUP
     assert plan_broad_exploration().steps[0].tool is ToolName.EDA
     parsed_txn = parse_intent(

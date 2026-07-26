@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query
 
 from backend.app.api.dependencies import SessionDep
+from backend.app.core.config import get_settings
 from backend.app.core.errors import AppError
 from backend.app.data.models import Alert, AlertEvent
 from backend.app.domain.api import (
@@ -19,6 +20,7 @@ from backend.app.domain.api import (
 from backend.app.domain.base import ContractModel
 from backend.app.domain.enums import EscalationAction, RiskLevel
 from backend.app.services import alerts as alert_service
+from backend.app.services.alert_packs import read_alert_pack_from_ref
 
 router = APIRouter(tags=["alerts"])
 
@@ -46,6 +48,10 @@ def _event_response(event: AlertEvent) -> AlertEventResponse:
 
 
 def _alert_response(alert: Alert, history: list[AlertEvent]) -> AlertResponse:
+    settings = get_settings()
+    case_pack = read_alert_pack_from_ref(settings.data_dir, alert.evidence_snapshot_ref)
+    if case_pack is None:
+        case_pack = read_alert_pack_from_ref(settings.data_dir, f"pack:{alert.alert_id}")
     return AlertResponse(
         alert_id=alert.alert_id,
         investigation_id=alert.investigation_id,
@@ -61,6 +67,7 @@ def _alert_response(alert: Alert, history: list[AlertEvent]) -> AlertResponse:
         created_at=alert.created_at,
         updated_at=alert.updated_at,
         history=[_event_response(item) for item in history],
+        case_pack=case_pack,
     )
 
 

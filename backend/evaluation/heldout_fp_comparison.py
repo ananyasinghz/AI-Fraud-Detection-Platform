@@ -323,7 +323,9 @@ def main() -> None:
         "contextual_detector": contextual.as_dict(n),
         "ablations": {
             "rules_profile_only": (
-                "Current anomaly facade evaluates structuring.v1 rules only; "
+                "Anomaly facade evaluates all seven deterministic rules "
+                "(structuring, smurfing, velocity, rapid_cash_out, round_numbers, "
+                "profile_deviation, high_risk_country); "
                 "profile/context enter customer rollup at ≤5% weight when supplied. "
                 "No separate ablation numbers beyond the contextual row above."
             ),
@@ -336,7 +338,7 @@ def main() -> None:
             "Synthetic scenario prevalence is injected and does not mirror real AML base rates.",
             "Ground truth is scenario annotations (pattern_type != clean_control), "
             "not SAR outcomes.",
-            "Contextual path uses entity-scoped features + structuring rules + "
+            "Contextual path uses entity-scoped features + multi-rule anomaly + "
             "Phase 8 risk/escalation.",
             "Naive baseline flags amount/daily-count thresholds without profile "
             "or rolling context.",

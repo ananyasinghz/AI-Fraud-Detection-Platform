@@ -62,11 +62,18 @@ The Phase 5 suite adds coverage for:
   HTTP 422 `CLARIFICATION_REQUIRED`) without silently broadening to dataset EDA
 - Free-text `POST /api/v1/query` without `plan` (parse → route → template → graph) and unchanged
   explicit-`plan` Phase 4 behavior
+- **Pattern search is typology-routed** (not structuring-only): `plan_pattern_search` maps
+  `PatternType` → matching feature ops + targeted `rule_ids` (`structuring`, `smurfing`,
+  `velocity`, `rapid_cash_out`, `round_number`, `profile_deviation`, `high_risk_country`, or
+  general multi-rule). Pattern queries without a customer id clarify instead of using
+  `UNKNOWN`. Offline fallback keywords cover all pattern types after scrubbing ids so
+  tokens inside customer ids do not force the wrong intent.
 
 ### Offline intent metrics (`intent_queries.v1`)
 
-Labeled set: `backend/tests/fixtures/intent_queries.v1.json` (32 queries, including the six
-mandatory strings and paraphrases/invalid IDs). Evaluator:
+Labeled set: `backend/tests/fixtures/intent_queries.v1.json` (pattern paraphrases include
+entity-scoped typology queries; cohort pattern asks without a customer id expect
+clarification). Evaluator:
 `python -m backend.evaluation.intent_evaluation` (eval-only; not imported by the app).
 
 Measured on the offline deterministic fallback extractor (`FRAUD_OLLAMA_ENABLED=false`):
@@ -260,17 +267,19 @@ local developer machine (`as_of=2026-07-25Z`).
 
 **Limitations / prevalence:** synthetic injected scenarios; positives are annotated customers with
 `pattern_type != clean_control`. Naive baseline flags fixed amount / daily-count thresholds with
-no profile context. Contextual path runs entity-scoped structuring features + `structuring.v1`
-rules + Phase 8 risk/escalation (anomaly facade is structuring-focused today), so held-out recall
-is low and matches the naive alert count on this cut—not an aspirational FP reduction. Rules/profile
-ablation: profile/context remain ≤5% of rollup when supplied; no separate numeric ablation beyond
-the contextual row. ML incremental effect: synthetic AML rows are `ml_eligible=false`, so not
-measurable here.
+no profile context. Contextual path runs entity-scoped multi-rule anomaly (all seven
+deterministic rules) + Phase 8 risk/escalation. Held-out metrics above may predate the
+multi-rule facade expansion—re-run `heldout_fp_comparison` to refresh recall/FP figures.
+Rules/profile ablation: profile/context remain ≤5% of rollup when supplied; no separate
+numeric ablation beyond the contextual row. ML incremental effect: synthetic AML rows are
+`ml_eligible=false`, so not measurable here.
 
 ### Six mandatory queries (e2e)
 
 `backend/tests/integration/test_phase9_six_queries.py` asserts distinct
-`tools_invoked` / skipped traces for the six demo chips (seed-42 IDs). Latency harness:
+`tools_invoked` / skipped traces for the six demo chips (seed-42 IDs), plus typology
+parity for entity-scoped `pattern_search` (smurfing / velocity / rapid cash-out /
+structuring fire; clean stays low). Latency harness:
 
 ```powershell
 python scripts/measure_demo_latency.py

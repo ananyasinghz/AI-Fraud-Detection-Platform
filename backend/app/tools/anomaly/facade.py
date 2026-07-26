@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -10,14 +9,12 @@ from backend.app.data.query_scope import QueryScope
 from backend.app.data.repositories import TransactionRepository
 from backend.app.domain.enums import EntityType, ToolName, ToolStatus
 from backend.app.domain.evidence import ToolProvenance, ToolResult
-from backend.app.domain.features import (
-    EntityScope,
-    FeatureRequest,
-    FeatureWindow,
-    TransactionFilter,
-)
 from backend.app.rules import RULE_ENGINE, RuleInput
 from backend.app.services.feature_ref import features_as_mapping, load_ulb_features
+from backend.app.tools.anomaly.rule_bundles import (
+    RULE_FEATURE_OPS,
+    build_rule_feature_requests,
+)
 from backend.app.tools.context import ToolContext
 from backend.app.tools.envelope import Timer, make_result
 from backend.app.tools.features.registry import FEATURE_REGISTRY
@@ -96,32 +93,55 @@ def _run_rules(
     entity_id = str(parameters.get("entity_id") or (context.filters.customer_ids[:1] or [""])[0])
     if not entity_id:
         return [], ["rules require entity_id or customer_ids filter"]
-    window_days = int(parameters.get("window_days", context.policy.structuring.window_days))
-    request = FeatureRequest(
-        operation="subthreshold_count",
-        version="v1",
-        as_of=context.as_of,
-        window=FeatureWindow(
-            start_inclusive=context.as_of - timedelta(days=window_days),
-            end_exclusive=context.as_of,
-        ),
-        scope=EntityScope(entity_type=EntityType.CUSTOMER, entity_ids=(entity_id,)),
-        transaction_filter=TransactionFilter(currency=context.policy.currency),
-    )
-    scope = QueryScope.from_feature_request(context.filters, request)
-    feature = FEATURE_REGISTRY(
-        session=context.session,
+
+    requested = parameters.get("rule_ids")
+    if requested is None:
+        rule_ids = tuple(rid for rid in RULE_ENGINE.registered() if rid in RULE_FEATURE_OPS)
+    else:
+        if not isinstance(requested, (list, tuple)):
+            return [], ["rule_ids must be a list of rule id strings"]
+        rule_ids = tuple(str(item) for item in requested)
+        unknown = [rid for rid in rule_ids if rid not in RULE_FEATURE_OPS]
+        if unknown:
+            return [], [f"unknown rule_ids: {', '.join(unknown)}"]
+
+    warnings: list[str] = []
+    rule_inputs: dict[str, RuleInput] = {}
+    for rule_id in rule_ids:
+        try:
+            requests = build_rule_feature_requests(
+                rule_id=rule_id,
+                entity_id=entity_id,
+                as_of=context.as_of,
+                policy=context.policy,
+            )
+            features = []
+            for request in requests:
+                scope = QueryScope.from_feature_request(context.filters, request)
+                feature = FEATURE_REGISTRY(
+                    session=context.session,
+                    policy=context.policy,
+                    request=request,
+                    scope=scope,
+                )
+                warnings.extend(warning.message for warning in feature.warnings)
+                features.append(feature)
+            rule_inputs[rule_id] = RuleInput(
+                entity_type=EntityType.CUSTOMER,
+                entity_id=entity_id,
+                feature_results=tuple(features),
+            )
+        except Exception as exc:
+            warnings.append(f"rule_features_failed:{rule_id}:{exc}")
+
+    if not rule_inputs:
+        return [], warnings or ["no rules could be evaluated"]
+
+    results = RULE_ENGINE.evaluate_many(
+        rule_inputs=rule_inputs,
         policy=context.policy,
-        request=request,
-        scope=scope,
     )
-    rule_input = RuleInput(
-        entity_type=EntityType.CUSTOMER,
-        entity_id=entity_id,
-        feature_results=(feature,),
-    )
-    result = RULE_ENGINE.dispatch("structuring.v1", rule_input=rule_input, policy=context.policy)
-    return [result.model_dump(mode="json")], [warning.message for warning in feature.warnings]
+    return [item.model_dump(mode="json") for item in results], warnings
 
 
 def _run_statistics(context: ToolContext) -> tuple[dict[str, Any], list[str]]:

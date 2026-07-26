@@ -158,6 +158,7 @@ export interface Alert {
   results: ResultItem[];
   supporting_evidence: ToolResult[];
   audit_history: AuditLog[];
+  case_pack: Record<string, unknown> | null;
 }
 
 export interface CustomerProfile {
@@ -173,10 +174,10 @@ export interface CustomerProfile {
   kyc_risk_score: number | null;
   recent_transactions: Array<{
     id: string;
-    amount: number;
+    amount_minor: number;
     currency: string;
     date: string;
-    status: string;
+    type: string;
   }>;
   alerts: Array<{ id: string; status: string; date: string }>;
 }
@@ -217,6 +218,17 @@ function ageDescription(iso: string): string {
 
 function mapAlert(raw: Record<string, unknown>): Alert {
   const history = Array.isArray(raw.history) ? raw.history : [];
+  const casePack =
+    raw.case_pack && typeof raw.case_pack === "object"
+      ? (raw.case_pack as Record<string, unknown>)
+      : null;
+  const flagged =
+    casePack && casePack.flagged_result && typeof casePack.flagged_result === "object"
+      ? ([casePack.flagged_result as ResultItem] as ResultItem[])
+      : [];
+  const evidence = Array.isArray(casePack?.supporting_evidence)
+    ? (casePack!.supporting_evidence as ToolResult[])
+    : [];
   return {
     id: String(raw.alert_id),
     risk_level: String(raw.risk_tier || "LOW").toUpperCase() as Alert["risk_level"],
@@ -229,14 +241,15 @@ function mapAlert(raw: Record<string, unknown>): Alert {
     age_description: ageDescription(String(raw.created_at)),
     evidence_snapshot_ref: String(raw.evidence_snapshot_ref || ""),
     policy_version: String(raw.policy_version || ""),
-    results: [],
-    supporting_evidence: [],
+    results: flagged,
+    supporting_evidence: evidence,
     audit_history: history.map((event: Record<string, unknown>) => ({
       timestamp: String(event.timestamp),
       reviewer: String(event.reviewer_id),
       transition: `${event.from_status ?? "∅"} → ${event.to_status}`,
       reason: String(event.reason || ""),
     })),
+    case_pack: casePack,
   };
 }
 
@@ -311,6 +324,7 @@ export const api = {
     entityId: string,
     results: ResultItem[],
     _evidence: ToolResult[],
+    casePack?: Record<string, unknown>,
   ): Promise<Alert> {
     const flagged = results.find((r) => r.result_type === "flagged") as FlaggedResult | undefined;
     const severity =
@@ -324,11 +338,12 @@ export const api = {
         entity_id: entityId,
         finding_code: "UI_MANUAL_ALERT",
         severity,
-        evidence_snapshot_ref: `ui:${entityId}`,
+        evidence_snapshot_ref: `ui:${entityId}`.slice(0, 128),
         policy_version: "risk_scoring.v1",
         investigation_window_start: windowStart,
         investigation_window_end: windowEnd,
         request_id: `ui-create-${Date.now()}`,
+        case_pack: casePack ?? null,
       }),
     });
     return mapAlert(raw);
@@ -355,25 +370,50 @@ export const api = {
   },
 
   async getCustomerDetails(customerId: string): Promise<CustomerProfile> {
-    const customer = await request<{ customer_id: string; created_at: string; status: string }>(
-      `/api/v1/customers/${encodeURIComponent(customerId)}`,
-    );
+    const customer = await request<{
+      customer_id: string;
+      created_at: string;
+      status: string;
+      segment?: string | null;
+      residence_country?: string | null;
+      kyc_risk_rating?: string | null;
+      recent_transactions?: Array<{
+        transaction_id: string;
+        amount_minor: number;
+        currency: string;
+        occurred_at: string;
+        transaction_type: string;
+      }>;
+    }>(`/api/v1/customers/${encodeURIComponent(customerId)}`);
     const alerts = await this.getAlerts();
     const linked = alerts
       .filter((a) => a.entity_type === "customer" && a.entity_id === customerId)
       .map((a) => ({ id: a.id, status: a.status, date: a.opened_at }));
+    const ratingRaw = (customer.kyc_risk_rating || "").toUpperCase();
+    const risk_rating =
+      ratingRaw === "HIGH" || ratingRaw === "MEDIUM" || ratingRaw === "LOW"
+        ? (ratingRaw as CustomerProfile["risk_rating"])
+        : linked.some((a) => a.status === "open" || a.status === "escalated")
+          ? "HIGH"
+          : "LOW";
     return {
       id: customer.customer_id,
       name: customer.customer_id,
-      country: "—",
-      segment: "synthetic runtime record",
+      country: customer.residence_country || "—",
+      segment: customer.segment || "—",
       status: customer.status,
       created_at: customer.created_at,
-      risk_rating: linked.some((a) => a.status === "open" || a.status === "escalated") ? "HIGH" : "LOW",
-      kyc_occupation: "Not stored in runtime API (see investigation tools)",
+      risk_rating,
+      kyc_occupation: "—",
       kyc_income_usd: "—",
       kyc_risk_score: null,
-      recent_transactions: [],
+      recent_transactions: (customer.recent_transactions || []).map((tx) => ({
+        id: tx.transaction_id,
+        amount_minor: tx.amount_minor,
+        currency: tx.currency,
+        date: tx.occurred_at,
+        type: tx.transaction_type,
+      })),
       alerts: linked,
     };
   },

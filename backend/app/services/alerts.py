@@ -10,9 +10,11 @@ from uuid import uuid4
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import get_settings
 from backend.app.core.errors import AppError
 from backend.app.data.models import Alert, AlertEvent
 from backend.app.domain.api import AlertCreateRequest, AlertPatchRequest, AlertStatus
+from backend.app.services.alert_packs import write_alert_pack
 from backend.app.services.provisional_risk import provisional_risk_from_severity
 
 ALLOWED_TRANSITIONS: dict[AlertStatus, frozenset[AlertStatus]] = {
@@ -71,6 +73,13 @@ def create_alert(session: Session, request: AlertCreateRequest) -> tuple[Alert, 
     )
     session.add(alert)
     session.flush()
+
+    if request.case_pack is not None:
+        settings = get_settings()
+        ref = write_alert_pack(settings.data_dir, alert.alert_id, request.case_pack)
+        alert.evidence_snapshot_ref = ref
+        session.flush()
+
     session.add(
         AlertEvent(
             alert_id=alert.alert_id,

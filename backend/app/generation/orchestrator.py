@@ -360,7 +360,8 @@ def _generate_rapid_cash_out(builder: _ScenarioBuilder, index: int) -> None:
     key = f"rapid-cash-out-{index:02d}"
     customer_id, account_id, device_id = builder.add_customer(key)
     builder.add_prior_clean_history(customer_id, account_id, device_id)
-    start = builder.as_of - timedelta(hours=4)
+    # Keep both legs inside the policy rapid_cash_out window (default 120 minutes).
+    start = builder.as_of - timedelta(minutes=90)
     recipient = builder.add_counterparty(f"{key}-recipient")
     builder.add_transaction(
         customer_id=customer_id,
@@ -389,7 +390,7 @@ def _generate_rapid_cash_out(builder: _ScenarioBuilder, index: int) -> None:
         window_from=start,
         window_to=builder.as_of,
         expected_signals=["large_credit_followed_by_rapid_debit"],
-        notes="Synthetic pass-through sequence.",
+        notes="Synthetic pass-through sequence within the rapid_cash_out policy window.",
     )
 
 

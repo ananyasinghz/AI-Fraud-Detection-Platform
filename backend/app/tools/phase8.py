@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+from backend.app.core.config import get_settings
 from backend.app.domain.api import AlertCreateRequest
 from backend.app.domain.enums import EntityType, ToolName, ToolStatus
 from backend.app.domain.evidence import ToolError, ToolProvenance
@@ -21,6 +22,7 @@ from backend.app.risk.customer_rollup import rollup_customer_risk
 from backend.app.risk.escalation import recommend_escalation
 from backend.app.risk.policy import RiskScoringPolicy, get_risk_policy
 from backend.app.services import alerts as alert_service
+from backend.app.services.alert_packs import write_alert_pack
 from backend.app.tools.context import ToolContext
 from backend.app.tools.envelope import Timer, make_result
 
@@ -258,18 +260,24 @@ def handle_risk_classification(
                 confidence_cap=confidence_cap,
                 insufficient_data=insufficient,
             )
-            txn_risks = [
-                {"transaction_id": f"derived:{customer_id}", "risk_score": seed.risk_score}
-            ]
-            rule_events = [
-                {
-                    "rule_id": item.get("rule_id") or "rule",
-                    "severity": item.get("severity") or "medium",
-                    "age_days": 0,
-                }
-                for item in seed.contributing_signals
-                if item.get("type") == "rule"
-            ]
+            # Only seed derived rows when there are real signals; a zero-score
+            # placeholder falsely inflates rollup confidence (0.8 → 0.6 cap).
+            if seed.risk_score > 0 or seed.contributing_signals:
+                txn_risks = [
+                    {
+                        "transaction_id": f"derived:{customer_id}",
+                        "risk_score": seed.risk_score,
+                    }
+                ]
+                rule_events = [
+                    {
+                        "rule_id": item.get("rule_id") or "rule",
+                        "severity": item.get("severity") or "medium",
+                        "age_days": 0,
+                    }
+                    for item in seed.contributing_signals
+                    if item.get("type") == "rule"
+                ]
         profile_score = parameters.get("profile_score")
         context_score = parameters.get("context_score")
         rolled = rollup_customer_risk(
@@ -406,6 +414,37 @@ def handle_escalation(
         alert.risk_score = recommendation.snapshot["risk_score"]
         alert.risk_tier = recommendation.risk_level.value
         alert.escalation_action = recommendation.escalation_action.value
+        if created:
+            settings = get_settings()
+            evidence_refs = [
+                {
+                    "tool": prior.tool.value if hasattr(prior.tool, "value") else str(prior.tool),
+                    "operation": prior.operation,
+                    "status": (
+                        prior.status.value if hasattr(prior.status, "value") else str(prior.status)
+                    ),
+                    "evidence": [
+                        {"evidence_id": ref.evidence_id, "label": ref.label}
+                        for ref in (prior.evidence or [])
+                    ],
+                }
+                for prior in context.prior_results
+                if prior.status is ToolStatus.SUCCESS
+            ]
+            ref = write_alert_pack(
+                settings.data_dir,
+                alert.alert_id,
+                {
+                    "pack_version": "alert_case_pack.v1",
+                    "source": "phase8_escalation",
+                    "request_id": context.request_id,
+                    "flagged_summary": recommendation.snapshot,
+                    "wording": recommendation.wording,
+                    "supporting_evidence_refs": evidence_refs,
+                    "finding_code": recommendation.finding_code,
+                },
+            )
+            alert.evidence_snapshot_ref = ref
         context.session.flush()
         alert_id = alert.alert_id
 

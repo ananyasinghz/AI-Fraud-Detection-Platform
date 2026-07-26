@@ -118,8 +118,10 @@ def rollup_customer_risk(
     if not reasons:
         reasons.append("Customer rollup within low-risk band.")
 
-    confidence = 0.8 if (scores or by_rule) else 0.5
-    if "PROFILE_SCORE_MISSING" in warnings:
+    # Positive txn scores or fired rules count as real signal evidence.
+    has_real_signals = any(score > 0 for score in scores) or bool(by_rule)
+    confidence = 0.8 if has_real_signals else 0.5
+    if has_real_signals and "PROFILE_SCORE_MISSING" in warnings:
         confidence = min(confidence, 0.6)
 
     return CustomerRollupResult(

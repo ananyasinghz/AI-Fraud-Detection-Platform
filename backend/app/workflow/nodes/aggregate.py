@@ -30,17 +30,11 @@ def build_final_response(
     flagged = _extract_flagged_results(state.tool_results)
     results: list[ResultItem] = list(flagged)
     if not flagged:
+        info_summary, info_data = _informational_payload(state, status, charts)
         results.append(
             InformationalResult(
-                summary=_informational_summary(state, status),
-                data={
-                    "status": status,
-                    "tools_invoked": [tool.value for tool in state.tools_invoked],
-                    "tools_skipped": [
-                        {"tool": item.tool.value, "reason": item.reason}
-                        for item in state.tools_skipped
-                    ],
-                },
+                summary=info_summary,
+                data=info_data,
                 evidence_refs=list(state.evidence_refs),
             )
         )
@@ -48,7 +42,7 @@ def build_final_response(
         results.insert(
             0,
             InformationalResult(
-                summary=_informational_summary(state, status),
+                summary=_default_informational_summary(state, status),
                 data={"status": status},
                 evidence_refs=list(state.evidence_refs),
             ),
@@ -166,12 +160,139 @@ def _extract_charts(results: list[ToolResult]) -> list[ChartSpec]:
 
 
 def _informational_summary(state: InvestigationState, status: str) -> str:
+    return _default_informational_summary(state, status)
+
+
+def _default_informational_summary(state: InvestigationState, status: str) -> str:
     invoked = ", ".join(tool.value for tool in state.tools_invoked) or "none"
     skipped = ", ".join(item.tool.value for item in state.tools_skipped) or "none"
     return (
         f"Investigation {status}: invoked [{invoked}]; skipped [{skipped}]; "
         f"route={state.route.value}."
     )
+
+
+def _transaction_total_minor(result: ToolResult) -> float | None:
+    feature = result.data.get("feature_result")
+    if not isinstance(feature, dict):
+        return None
+    values = feature.get("values")
+    if not isinstance(values, list):
+        return None
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("name")) != "transaction_total":
+            continue
+        raw = item.get("value")
+        if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+            return None
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _spend_comparison_payload(
+    state: InvestigationState,
+) -> tuple[str, dict[str, Any]] | None:
+    current: ToolResult | None = None
+    prior: ToolResult | None = None
+    for result in state.tool_results:
+        if result.tool is not ToolName.FEATURE_ENGINEERING:
+            continue
+        if result.status is not ToolStatus.SUCCESS:
+            continue
+        role = str(result.data.get("window_role") or "")
+        if role == "current":
+            current = result
+        elif role == "prior":
+            prior = result
+    if current is None or prior is None:
+        return None
+    current_minor = _transaction_total_minor(current)
+    prior_minor = _transaction_total_minor(prior)
+    if current_minor is None or prior_minor is None:
+        return None
+    entity_ids = list(current.scope.customer_ids or [])
+    entity_id = str(entity_ids[0]) if entity_ids else "UNKNOWN"
+    delta = current_minor - prior_minor
+    ratio = (current_minor / prior_minor) if prior_minor > 0 else None
+    elevated = (prior_minor > 0 and ratio is not None and ratio >= 1.5) or (
+        prior_minor == 0 and current_minor > 0
+    )
+    current_usd = current_minor / 100.0
+    prior_usd = prior_minor / 100.0
+    delta_usd = delta / 100.0
+    ratio_text = f"{ratio:.2f}x" if ratio is not None else "n/a"
+    summary = (
+        f"Spend comparison for {entity_id}: current=${current_usd:,.2f} vs "
+        f"prior=${prior_usd:,.2f} (Δ=${delta_usd:,.2f}, ratio={ratio_text}). "
+        f"Elevated vs prior baseline: {'yes' if elevated else 'no'}."
+    )
+    return summary, {
+        "spend_comparison": {
+            "entity_id": entity_id,
+            "current_minor": current_minor,
+            "prior_minor": prior_minor,
+            "delta_minor": delta,
+            "ratio": ratio,
+            "elevated": elevated,
+        }
+    }
+
+
+def _eda_informational_payload(
+    state: InvestigationState,
+    charts: list[ChartSpec],
+) -> tuple[str, dict[str, Any]] | None:
+    cohort = _latest(state.tool_results, tool=ToolName.EDA, operation="cohort_profile")
+    if cohort is None or cohort.status not in {ToolStatus.SUCCESS, ToolStatus.PARTIAL}:
+        return None
+    data = dict(cohort.data)
+    txn_count = data.get("transaction_count")
+    cust_count = data.get("customer_count")
+    summary = (
+        f"EDA cohort profile: {txn_count} transactions across {cust_count} customers; "
+        f"{len(charts)} chart(s)."
+    )
+    return summary, {
+        "eda_cohort": {
+            "transaction_count": txn_count,
+            "customer_count": cust_count,
+            "amount_min_minor": data.get("amount_min_minor"),
+            "amount_max_minor": data.get("amount_max_minor"),
+            "amount_mean_minor": data.get("amount_mean_minor"),
+            "segment_counts": data.get("segment_counts") or {},
+            "chart_ids": [chart.chart_id for chart in charts],
+        }
+    }
+
+
+def _informational_payload(
+    state: InvestigationState,
+    status: str,
+    charts: list[ChartSpec],
+) -> tuple[str, dict[str, Any]]:
+    base: dict[str, Any] = {
+        "status": status,
+        "tools_invoked": [tool.value for tool in state.tools_invoked],
+        "tools_skipped": [
+            {"tool": item.tool.value, "reason": item.reason} for item in state.tools_skipped
+        ],
+    }
+    spend = _spend_comparison_payload(state)
+    if spend is not None:
+        summary, extra = spend
+        base.update(extra)
+        return summary, base
+    eda = _eda_informational_payload(state, charts)
+    if eda is not None:
+        summary, extra = eda
+        base.update(extra)
+        return summary, base
+    return _default_informational_summary(state, status), base
 
 
 def _answer_text(

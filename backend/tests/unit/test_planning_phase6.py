@@ -340,7 +340,7 @@ def test_mandatory_forced_planner_invoke_skip() -> None:
             {ToolName.EDA},
         ),
         (
-            "Find structuring patterns in the last 30 days.",
+            "Find structuring patterns for customer cus-dev-42-structuring-00 in the last 30 days.",
             {ToolName.FEATURE_ENGINEERING, ToolName.ANOMALY_DETECTION},
             {ToolName.EDA},
         ),
@@ -356,7 +356,7 @@ def test_mandatory_forced_planner_invoke_skip() -> None:
         ),
         (
             "Which customers made 10+ transactions under $10,000?",
-            {ToolName.SQL_LOOKUP, ToolName.FEATURE_ENGINEERING},
+            {ToolName.SQL_LOOKUP},
             {ToolName.EDA, ToolName.ANOMALY_DETECTION},
         ),
     ]

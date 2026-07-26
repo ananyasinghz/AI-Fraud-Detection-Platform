@@ -1,12 +1,87 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { api, FinalResponse, ResultItem, ToolResult, FlaggedResult } from '../services/api';
-import { ArrowRight, ChevronDown, ChevronUp, AlertCircle, FileText, PlusCircle, Check } from 'lucide-react';
+import {
+  api,
+  DEMO_AS_OF,
+  FinalResponse,
+  ResultItem,
+  FlaggedResult,
+  ChartSpec,
+} from '../services/api';
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  FileText,
+  PlusCircle,
+  Check,
+  Copy,
+} from 'lucide-react';
+import {
+  buildAlertCasePack,
+  buildInvestigationPack,
+  explanationFallbackCopy,
+  explanationSourceBanner,
+  extractEdaCohort,
+  extractExplanation,
+  extractFeatureResults,
+  extractSpendComparison,
+  extractSqlTransactions,
+  extractThresholdCohort,
+  flaggedResults,
+  formatUsdFromMinor,
+  hasEdaEvidence,
+  hasPolicyContextOnly,
+  keyFieldsFromTool,
+  statusBanner,
+} from '../utils/reviewer';
 
 interface InvestigateViewProps {
   onAlertCreated: () => void;
+  onOpenAlerts?: () => void;
+  initialQuery?: string | null;
+  onInitialQueryConsumed?: () => void;
 }
 
-export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated }) => {
+const EXAMPLE_QUERIES = [
+  {
+    text: 'Show me transactions over $5,000',
+    label: '1. SQL amount lookup',
+    hint: 'Expect a transaction table (seed has rows ≥ $5k). SQL-only — no risk explanation.',
+  },
+  {
+    text: 'Which customers made 10+ transactions under $10,000?',
+    label: '2. Threshold aggregation',
+    hint: 'Customer counts under $10k with ≥10 txs (not a raw txn dump).',
+  },
+  {
+    text: 'Find structuring patterns for customer cus-dev-42-structuring-00 in the last 30 days',
+    label: '3. Structuring (features+rules)',
+    hint: 'Expect flagged MEDIUM/review, explanation card, evidence tools.',
+  },
+  {
+    text: 'Is customer ID cus-dev-42-structuring-00 suspicious?',
+    label: '4. Entity investigation',
+    hint: 'Entity-scoped tools + Phase 8 risk/escalation/explanation.',
+  },
+  {
+    text: 'Did customer cus-dev-42-spending-increase-00 suddenly increase spending this month?',
+    label: '5. Feature-only spending',
+    hint: 'Current vs prior 30d spend + elevated flag.',
+  },
+  {
+    text: 'Analyse this dataset for suspicious activity',
+    label: '6. Broad EDA exploration',
+    hint: 'Cohort stats + charts (not an empty risk table).',
+  },
+];
+
+export const InvestigateView: React.FC<InvestigateViewProps> = ({
+  onAlertCreated,
+  onOpenAlerts,
+  initialQuery,
+  onInitialQueryConsumed,
+}) => {
   const [query, setQuery] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -16,24 +91,27 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
   const [isExamplesExpanded, setIsExamplesExpanded] = useState(true);
   const [hasRunQuery, setHasRunQuery] = useState(false);
-  const [alertStates, setAlertStates] = useState<Record<string, { created: boolean; id?: string }>>({});
+  const [alertStates, setAlertStates] = useState<Record<string, { created: boolean; id?: string }>>(
+    {},
+  );
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const timerRef = useRef<any | null>(null);
-
-  const exampleQueries = [
-    { text: 'Show me transactions over $10,000', label: '1. SQL-only amount filter' },
-    { text: 'Which customers made 10+ transactions under $10,000?', label: '2. Threshold aggregation' },
-    { text: 'Did customer cus-dev-42-spending-increase-00 suddenly increase spending this month?', label: '3. Feature-only spending' },
-    { text: 'Find structuring patterns for customer cus-dev-42-structuring-00 in the last 30 days', label: '4. Structuring (features+rules)' },
-    { text: 'Is customer ID cus-dev-42-structuring-00 suspicious?', label: '5. Entity investigation' },
-    { text: 'Analyse this dataset for suspicious activity', label: '6. Broad EDA exploration' },
-  ];
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (initialQuery && initialQuery.trim()) {
+      setQuery(initialQuery);
+      onInitialQueryConsumed?.();
+      void runQuery(initialQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
 
   const runQuery = async (queryText: string) => {
     if (!queryText.trim() || isRunning) return;
@@ -45,7 +123,7 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
     setResponse(null);
     setExpandedRows({});
     setHasRunQuery(true);
-    setIsExamplesExpanded(false); // Collapse examples once run
+    setIsExamplesExpanded(false);
     setAlertStates({});
 
     const startTime = Date.now();
@@ -56,28 +134,29 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
     try {
       const res = await api.executeQuery(queryText);
       setResponse(res);
-      
-      // Auto-expand first result row if available for convenience
-      if (res.results && res.results.length > 0) {
-        const firstId = res.results[0].entity_id || 'row-0';
-        setExpandedRows({ [firstId]: true });
+
+      const flagged = flaggedResults(res);
+      if (flagged.length > 0) {
+        setExpandedRows({ [flagged[0].entity_id]: true });
       }
 
-      // Check if alert already exists for flagged entities
       const existingAlerts = await api.getAlerts();
-      const updatedAlertStates: Record<string, { created: boolean; id?: string }> = {};
-      res.results.forEach((r, idx) => {
-        if (r.result_type === 'flagged') {
-          const matchedAlert = existingAlerts.find(a => a.entity_id === r.entity_id && a.entity_type === r.entity_type && a.status !== 'closed');
-          if (matchedAlert) {
-            updatedAlertStates[r.entity_id || `idx-${idx}`] = { created: true, id: matchedAlert.id };
-          }
+      const updated: Record<string, { created: boolean; id?: string }> = {};
+      flagged.forEach((r, idx) => {
+        const matched = existingAlerts.find(
+          (a) =>
+            a.entity_id === r.entity_id &&
+            a.entity_type === r.entity_type &&
+            a.status !== 'closed',
+        );
+        if (matched) {
+          updated[r.entity_id || `idx-${idx}`] = { created: true, id: matched.id };
         }
       });
-      setAlertStates(updatedAlertStates);
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || 'A network error occurred while executing the query.');
+      setAlertStates(updated);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error while executing query.';
+      setError(message);
     } finally {
       setIsRunning(false);
       if (timerRef.current) {
@@ -89,249 +168,229 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    runQuery(query);
+    void runQuery(query);
   };
 
   const toggleRow = (id: string) => {
-    setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
+    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const getRiskClass = (level: string) => {
     switch (level?.toUpperCase()) {
-      case 'HIGH': return 'high';
-      case 'MEDIUM': return 'medium';
-      case 'LOW': return 'low';
-      default: return '';
+      case 'HIGH':
+        return 'high';
+      case 'MEDIUM':
+        return 'medium';
+      case 'LOW':
+        return 'low';
+      default:
+        return '';
     }
   };
 
   const handleCreateAlert = async (entityId: string, result: ResultItem) => {
     if (!response || result.result_type !== 'flagged') return;
-
     try {
-      // Find supporting evidence containing matching evidence refs
-      const matchedEvidence = response.supporting_evidence.filter(ev => 
-        result.evidence_refs.includes(ev.tool) || 
-        ev.evidence.some(ref => result.evidence_refs.includes(ref.evidence_id))
-      );
-
       const alert = await api.createAlertFromQuery(
         result.entity_type as 'customer' | 'transaction',
         entityId,
-        [result],
-        matchedEvidence
+        response.results,
+        response.supporting_evidence,
+        buildAlertCasePack({
+          response,
+          flagged: result,
+          query: response.execution_summary.query,
+        }),
       );
-
-      setAlertStates(prev => ({
+      setAlertStates((prev) => ({
         ...prev,
-        [entityId]: { created: true, id: alert.id }
+        [entityId]: { created: true, id: alert.id },
       }));
-      
-      onAlertCreated(); // Refresh badge count in sidebar
-    } catch (err) {
-      console.error(err);
-      alert('Failed to generate alert record.');
+      onAlertCreated();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to create alert');
     }
   };
 
-  // Extract matching details from supporting evidence
-  const renderEvidenceDetails = (refs: string[]) => {
-    if (!response) return null;
-    
-    // Find all evidence details from supporting tools matching the references
-    const evidenceItems: Array<{ id: string; label: string; tool: string; value: string; provenance: string }> = [];
-
-    response.supporting_evidence.forEach((toolResult: ToolResult) => {
-      toolResult.evidence.forEach(ref => {
-        if (refs.includes(ref.evidence_id)) {
-          // Resolve JSON value path simply
-          let val = '—';
-          if (ref.json_path === '$.rolling_count') val = String(toolResult.data.rolling_count ?? '—');
-          else if (ref.json_path === '$.rules_fired') val = Array.isArray(toolResult.data.rules_fired) ? toolResult.data.rules_fired.join(', ') : '—';
-          else if (ref.json_path === '$.velocity_index') val = String(toolResult.data.velocity_index ?? '—');
-          else if (ref.json_path === '$.occupation_deviation_score') val = String(toolResult.data.occupation_deviation_score ?? '—');
-          else if (ref.json_path === '$.ml_score') val = String(toolResult.data.ml_score ?? '—');
-          else if (ref.json_path === '$.records') {
-            const records = toolResult.data.records;
-            val = Array.isArray(records) ? `${records.length} records matched` : '—';
-          } else if (ref.json_path === '$.matches') {
-            const matches = toolResult.data.matches;
-            val = Array.isArray(matches) ? `${matches.length} aggregation rows` : '—';
-          }
-          else if (ref.json_path === '$.total_transactions') val = String(toolResult.data.total_transactions ?? '—');
-          else if (ref.json_path === '$.total_flagged_entities') val = String(toolResult.data.total_flagged_entities ?? '—');
-
-          evidenceItems.push({
-            id: ref.evidence_id,
-            label: ref.label,
-            tool: toolResult.tool,
-            value: val,
-            provenance: `${toolResult.provenance.source} (${toolResult.provenance.query_or_version})`
-          });
-        }
-      });
-    });
-
-    if (evidenceItems.length === 0) {
-      return <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>No additional evidence items found for: {refs.join(', ')}</div>;
-    }
-
-    return (
-      <table className="evidence-table">
-        <thead>
-          <tr>
-            <th>Ref ID</th>
-            <th>Indicator Metric</th>
-            <th>Value</th>
-            <th>Source System / Provenance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {evidenceItems.map(item => (
-            <tr key={item.id}>
-              <td>{item.id}</td>
-              <td>{item.label}</td>
-              <td style={{ fontWeight: '600' }}>{item.value}</td>
-              <td style={{ color: 'var(--text-muted)', fontSize: '11px' }}>{item.provenance}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  };
-
-  // Render minimal SVG-based charts to match the "boring on purpose" design system
-  const renderSVGChart = (chart: any) => {
-    const { labels, values } = chart.data;
-    if (!labels || !values || labels.length === 0) return null;
-
-    const chartHeight = 150;
-    const chartWidth = 500;
-    const maxVal = Math.max(...values, 1);
-    const barWidth = Math.floor((chartWidth - 40) / labels.length);
-
-    if (chart.chart_type === 'line') {
-      const points = values.map((val: number, idx: number) => {
-        const x = 30 + idx * ((chartWidth - 50) / (labels.length - 1));
-        const y = chartHeight - 20 - (val / maxVal) * (chartHeight - 40);
-        return `${x},${y}`;
-      }).join(' ');
-
-      return (
-        <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="chart-canvas" style={{ width: '100%', height: 'auto', border: 'none' }}>
-          {/* Gridlines */}
-          <line x1="30" y1="20" x2={chartWidth - 20} y2="20" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-          <line x1="30" y1="65" x2={chartWidth - 20} y2="65" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-          <line x1="30" y1="110" x2={chartWidth - 20} y2="110" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-          
-          {/* Y Axis Labels */}
-          <text x="25" y="24" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">{maxVal}</text>
-          <text x="25" y="69" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">{Math.floor(maxVal / 2)}</text>
-          <text x="25" y="114" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">0</text>
-          
-          {/* Axes */}
-          <line x1="30" y1="10" x2="30" y2={chartHeight - 20} stroke="var(--text-muted)" strokeWidth="1" />
-          <line x1="30" y1={chartHeight - 20} x2={chartWidth - 10} y2={chartHeight - 20} stroke="var(--text-muted)" strokeWidth="1" />
-
-          {/* Line Path */}
-          <polyline fill="none" stroke="var(--accent-blue)" strokeWidth="1.5" points={points} />
-          
-          {/* Scatter Points */}
-          {values.map((val: number, idx: number) => {
-            const x = 30 + idx * ((chartWidth - 50) / (labels.length - 1));
-            const y = chartHeight - 20 - (val / maxVal) * (chartHeight - 40);
-            return (
-              <circle key={idx} cx={x} cy={y} r="2.5" fill="var(--text-primary)" stroke="var(--accent-blue)" strokeWidth="1" />
-            );
-          })}
-
-          {/* X Axis Labels */}
-          {labels.map((label: string, idx: number) => {
-            const x = 30 + idx * ((chartWidth - 50) / (labels.length - 1));
-            return (
-              <text key={idx} x={x} y={chartHeight - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">
-                {label}
-              </text>
-            );
-          })}
-        </svg>
-      );
-    }
-
-    // Default: Bar Chart
-    return (
-      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="chart-canvas" style={{ width: '100%', height: 'auto', border: 'none' }}>
-        {/* Gridlines */}
-        <line x1="30" y1="20" x2={chartWidth - 20} y2="20" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-        <line x1="30" y1="65" x2={chartWidth - 20} y2="65" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-        <line x1="30" y1="110" x2={chartWidth - 20} y2="110" stroke="var(--border-color)" strokeWidth="0.5" strokeDasharray="2,2" />
-        
-        {/* Y Axis Labels */}
-        <text x="25" y="24" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">{maxVal}</text>
-        <text x="25" y="69" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">{Math.floor(maxVal / 2)}</text>
-        <text x="25" y="114" textAnchor="end" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">0</text>
-        
-        {/* Axes */}
-        <line x1="30" y1="10" x2="30" y2={chartHeight - 20} stroke="var(--text-muted)" strokeWidth="1" />
-        <line x1="30" y1={chartHeight - 20} x2={chartWidth - 10} y2={chartHeight - 20} stroke="var(--text-muted)" strokeWidth="1" />
-
-        {/* Bars */}
-        {values.map((val: number, idx: number) => {
-          const barHeight = (val / maxVal) * (chartHeight - 40);
-          const x = 35 + idx * ((chartWidth - 45) / labels.length);
-          const y = chartHeight - 20 - barHeight;
-          const w = Math.max(10, ((chartWidth - 45) / labels.length) - 10);
-          return (
-            <g key={idx}>
-              <rect x={x} y={y} width={w} height={barHeight} fill="var(--accent-blue)" stroke="none" />
-              <text x={x + w/2} y={y - 3} textAnchor="middle" fontSize="8" fontFamily="var(--font-mono)" fill="var(--text-secondary)">{val}</text>
-            </g>
-          );
-        })}
-
-        {/* X Axis Labels */}
-        {labels.map((label: string, idx: number) => {
-          const x = 35 + idx * ((chartWidth - 45) / labels.length) + (Math.max(10, ((chartWidth - 45) / labels.length) - 10) / 2);
-          return (
-            <text key={idx} x={x} y={chartHeight - 5} textAnchor="middle" fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-muted)">
-              {label}
-            </text>
-          );
-        })}
-      </svg>
-    );
-  };
-
-  const downloadJson = () => {
+  const downloadPack = () => {
     if (!response) return;
-    const blob = new Blob([JSON.stringify(response, null, 2)], { type: 'application/json' });
+    const alertId =
+      Object.values(alertStates).find((s) => s.created && s.id)?.id ||
+      null;
+    const pack = buildInvestigationPack({ response, demoAsOf: DEMO_AS_OF, alertId });
+    const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `investigation-${response.request_id}.json`;
+    a.download = `investigation-pack-${response.request_id}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Determine if risk/recommendation columns are required based on results contents
-  const hasRiskColumns = response?.results && response.results.some(r => r.result_type === 'flagged');
-  const fallbackHints = [
-    ...(response?.execution_summary?.fallbacks || []),
-    ...(response?.execution_summary?.warnings || []),
-  ];
-  const ollamaHint = fallbackHints.some(
-    (w) => /ollama|fallback|planner/i.test(String(w)),
-  );
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(text);
+      setTimeout(() => setCopiedId(null), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const renderSVGChart = (chart: ChartSpec) => {
+    const labels = chart.data.labels || [];
+    const values = (chart.data.values || []).map(Number);
+    if (!labels.length || !values.length) {
+      const rows = Array.isArray(chart.data.rows) ? chart.data.rows : null;
+      if (rows && rows.length) {
+        return (
+          <div className="table-container" style={{ border: 'none', maxHeight: 220, overflow: 'auto' }}>
+            <table className="console-table" style={{ fontSize: 11 }}>
+              <tbody>
+                {rows.slice(0, 20).map((row, i) => (
+                  <tr key={i}>
+                    {Array.isArray(row)
+                      ? row.map((cell, j) => (
+                          <td key={j} className="mono-cell">
+                            {String(cell)}
+                          </td>
+                        ))
+                      : Object.entries(row as Record<string, unknown>).map(([k, v]) => (
+                          <td key={k} className="mono-cell">
+                            {k}: {String(v)}
+                          </td>
+                        ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      return (
+        <div className="mono-cell" style={{ fontSize: 11, padding: 8 }}>
+          Table/chart payload: {JSON.stringify(chart.data).slice(0, 240)}
+          {JSON.stringify(chart.data).length > 240 ? '…' : ''}
+        </div>
+      );
+    }
+    const chartHeight = 180;
+    const chartWidth = Math.max(500, labels.length * 56);
+    const maxVal = Math.max(...values, 1);
+    const barWidth = Math.floor((chartWidth - 50) / labels.length);
+    const formatVal = (v: number) =>
+      Number.isInteger(v) ? String(v) : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+    return (
+      <div>
+        {(chart.y_label || chart.x_label) && (
+          <div className="chart-caption" style={{ marginBottom: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+            {[chart.y_label && `Y: ${chart.y_label}`, chart.x_label && `X: ${chart.x_label}`]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        )}
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          className="chart-canvas"
+          style={{ width: '100%', height: 'auto', border: 'none' }}
+          role="img"
+          aria-label={chart.title}
+        >
+          <line
+            x1="40"
+            y1={chartHeight - 28}
+            x2={chartWidth - 10}
+            y2={chartHeight - 28}
+            stroke="var(--text-muted)"
+            strokeWidth="1"
+          />
+          <line x1="40" y1="16" x2="40" y2={chartHeight - 28} stroke="var(--text-muted)" strokeWidth="1" />
+          {values.map((val, idx) => {
+            const h = (val / maxVal) * (chartHeight - 56);
+            const x = 48 + idx * barWidth;
+            const y = chartHeight - 28 - h;
+            const label = String(labels[idx] ?? '');
+            const short = label.length > 10 ? `${label.slice(0, 9)}…` : label;
+            return (
+              <g key={idx}>
+                <title>{`${label}: ${formatVal(val)}`}</title>
+                <rect
+                  x={x}
+                  y={y}
+                  width={Math.max(barWidth - 8, 4)}
+                  height={Math.max(h, 1)}
+                  fill="var(--accent-blue)"
+                  opacity={0.85}
+                />
+                <text
+                  x={x + Math.max(barWidth - 8, 4) / 2}
+                  y={y - 4}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="var(--text-primary)"
+                  fontFamily="var(--font-mono)"
+                >
+                  {formatVal(val)}
+                </text>
+                <text
+                  x={x + Math.max(barWidth - 8, 4) / 2}
+                  y={chartHeight - 10}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="var(--text-muted)"
+                  fontFamily="var(--font-mono)"
+                >
+                  {short}
+                </text>
+              </g>
+            );
+          })}
+          <text
+            x="36"
+            y="22"
+            textAnchor="end"
+            fontSize="9"
+            fill="var(--text-muted)"
+            fontFamily="var(--font-mono)"
+          >
+            {formatVal(maxVal)}
+          </text>
+        </svg>
+      </div>
+    );
+  };
+
+  const sqlRows = response ? extractSqlTransactions(response) : [];
+  const featureRows = response ? extractFeatureResults(response) : [];
+  const thresholdCohort = response ? extractThresholdCohort(response) : null;
+  const edaCohort = response ? extractEdaCohort(response) : null;
+  const spendComparison = response ? extractSpendComparison(response) : null;
+  const flagged = response ? flaggedResults(response) : [];
+  const explanation = response ? extractExplanation(response) : null;
+  const banner = response ? statusBanner(response) : null;
+  const sourceBanner = response ? explanationSourceBanner(response) : null;
+  const policyNote = response ? hasPolicyContextOnly(response) : false;
+  const chartCount = response?.charts?.length ?? 0;
+  const showEmptyState =
+    !!response &&
+    flagged.length === 0 &&
+    !edaCohort &&
+    !hasEdaEvidence(response) &&
+    !thresholdCohort &&
+    !spendComparison &&
+    featureRows.length === 0 &&
+    sqlRows.length === 0 &&
+    chartCount === 0;
 
   return (
     <div className="view-container">
-      {/* Console Input Bar */}
       <div className="console-section">
         <form onSubmit={handleFormSubmit} className="query-bar-container">
           <input
             type="text"
             className="query-input"
-            placeholder="Type search queries (e.g. Find structuring patterns in the last 30 days)..."
+            placeholder="Type an investigation query…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={isRunning}
@@ -342,7 +401,6 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
           </button>
         </form>
 
-        {/* Running loader status */}
         {isRunning && (
           <div className="execution-status-bar">
             <span className="status-label-running">Running…</span>
@@ -351,23 +409,22 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
         )}
 
         {!isRunning && response && (
-          <div className="execution-status-bar" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div className="execution-status-bar" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
             <span className="status-label-done">
               {response.status || 'completed'} in {elapsedTime || '—'}s
             </span>
-            <button type="button" className="suggestion-btn" onClick={downloadJson} style={{ padding: '2px 8px' }}>
+            <button type="button" className="suggestion-btn" onClick={downloadPack} style={{ padding: '2px 8px' }}>
               <FileText size={12} style={{ display: 'inline', marginRight: 4 }} />
-              Export JSON
+              Download investigation pack
             </button>
           </div>
         )}
       </div>
 
-      {/* Example Queries box */}
       {(!hasRunQuery || isExamplesExpanded) && (
         <div className="suggestions-box">
-          <div 
-            className="suggestions-title" 
+          <div
+            className="suggestions-title"
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
             onClick={() => setIsExamplesExpanded(!isExamplesExpanded)}
           >
@@ -375,297 +432,167 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
             <span>{isExamplesExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</span>
           </div>
           {isExamplesExpanded && (
-            <div className="suggestions-list" style={{ marginTop: '8px' }}>
-              {exampleQueries.map((q, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => runQuery(q.text)}
-                  className="suggestion-btn"
-                  disabled={isRunning}
-                >
-                  {q.label}: "{q.text}"
-                </button>
+            <div className="suggestions-list" style={{ marginTop: 8 }}>
+              {EXAMPLE_QUERIES.map((q, idx) => (
+                <div key={idx} style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => void runQuery(q.text)}
+                    className="suggestion-btn"
+                    disabled={isRunning}
+                    style={{ display: 'block', width: '100%', textAlign: 'left' }}
+                  >
+                    <strong>{q.label}</strong>
+                    <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{q.text}</div>
+                  </button>
+                  <div className="mono-cell" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, paddingLeft: 4 }}>
+                    {q.hint}
+                  </div>
+                </div>
               ))}
             </div>
           )}
         </div>
       )}
 
-      {/* Collapse Examples Toggle link if already run */}
-      {hasRunQuery && !isExamplesExpanded && (
-        <button 
-          onClick={() => setIsExamplesExpanded(true)}
-          className="suggestion-btn"
-          style={{ alignSelf: 'flex-start', padding: 0 }}
-        >
-          + Show Example Queries
-        </button>
-      )}
-
-      {/* Error banner */}
       {error && (
         <div className="error-banner">
-          <AlertCircle size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'middle' }} />
+          <AlertCircle size={14} style={{ display: 'inline', marginRight: 6 }} />
           {error}
         </div>
       )}
 
-      {response?.clarification && (
-        <div className="error-banner" style={{ background: '#fff7ed', borderColor: '#fdba74', color: '#9a3412' }}>
-          Clarification required: {response.clarification}
-        </div>
-      )}
-
-      {response?.status === 'partial' && (
-        <div className="error-banner" style={{ background: '#fffbeb', borderColor: '#fcd34d', color: '#92400e' }}>
-          Partial result — some required or optional tools failed or were skipped. See Execution Summary.
-        </div>
-      )}
-
-      {ollamaHint && (
-        <div className="error-banner" style={{ background: '#f0f9ff', borderColor: '#7dd3fc', color: '#075985' }}>
-          Deterministic fallback path in use (Ollama unavailable or planner fallback). Tool traces remain authoritative.
-        </div>
-      )}
-
-      {!isRunning && response && response.results.length === 0 && !response.clarification && (
-        <div className="empty-state">No result rows — informational answer only. See answer text and tool evidence below.</div>
-      )}
-
-      {/* Execution Summary Panel */}
       {response && (
-        <div className="summary-panel">
-          <div className="summary-header" onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}>
-            <span>Execution Summary Tracing</span>
-            <span>{isSummaryExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {banner && banner.kind !== 'ok' && (
+            <div className="error-banner" style={{ opacity: banner.kind === 'soft_partial' ? 0.9 : 1 }}>
+              {banner.message}
+            </div>
+          )}
+          {sourceBanner && (
+            <div className="execution-status-bar" style={{ fontSize: 12 }}>
+              {sourceBanner}
+            </div>
+          )}
+
+          <div className="summary-panel">
+            <div className="summary-header" onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}>
+              <span>Execution Summary</span>
+              {isSummaryExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </div>
+            {isSummaryExpanded && (
+              <div className="summary-grid">
+                <span className="summary-key">Query</span>
+                <span className="summary-val">{response.execution_summary.query}</span>
+                <span className="summary-key">Intent</span>
+                <span className="summary-val">{response.execution_summary.detected_intent}</span>
+                <span className="summary-key">Route</span>
+                <span className="summary-val">{response.execution_summary.route}</span>
+                <span className="summary-key">Filters</span>
+                <span className="summary-val mono-cell" style={{ fontSize: 11 }}>
+                  {JSON.stringify(response.execution_summary.filters)}
+                </span>
+                <span className="summary-key">Invoked</span>
+                <span className="summary-val">
+                  {(response.execution_summary.tools_invoked || []).join(', ') || '—'}
+                </span>
+                <span className="summary-key">Skipped</span>
+                <span className="summary-val">
+                  {(response.execution_summary.tools_skipped || [])
+                    .map((s) => `${s.tool} (${s.reason})`)
+                    .join(' · ') || '—'}
+                </span>
+                <span className="summary-key">Warnings</span>
+                <span className="summary-val">
+                  {(response.execution_summary.warnings || []).join(' · ') || '—'}
+                </span>
+              </div>
+            )}
           </div>
-          {isSummaryExpanded && (
-            <div className="summary-grid">
-              <span className="summary-key">Query</span>
-              <span className="summary-val" style={{ fontFamily: 'var(--font-sans)', fontWeight: '500' }}>
-                {response.execution_summary.query}
-              </span>
 
-              <span className="summary-key">Intent</span>
-              <span className="summary-val">{response.execution_summary.detected_intent}</span>
-
-              <span className="summary-key">Route</span>
-              <span className="summary-val">{response.execution_summary.route}</span>
-
-              <span className="summary-key">Filters</span>
-              <span className="summary-val">
-                {Object.entries(response.execution_summary.filters)
-                  .filter(([_, v]) => v !== null && (!Array.isArray(v) || v.length > 0))
-                  .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-                  .join(' · ') || '—'}
-              </span>
-
-              <span className="summary-key">Invoked</span>
-              <span className="summary-val">
-                {response.execution_summary.tools_invoked.length > 0 ? (
-                  response.execution_summary.tools_invoked.map(tool => (
-                    <span key={tool} className="tool-chip invoked">{tool}</span>
-                  ))
-                ) : '—'}
-              </span>
-
-              <span className="summary-key">Skipped</span>
-              <span className="summary-val">
-                {response.execution_summary.tools_skipped.length > 0 ? (
-                  response.execution_summary.tools_skipped.map((skip, idx) => (
-                    <div key={idx} style={{ marginBottom: '4px' }}>
-                      <span className="tool-chip skipped">{skip.tool}</span>
-                      <span className="skipped-reason">{skip.reason}</span>
-                    </div>
-                  ))
-                ) : '—'}
-              </span>
-
-              <span className="summary-key">Warnings</span>
-              <span className="summary-val" style={{ color: 'var(--risk-med-text)' }}>
-                {response.execution_summary.warnings.join(' · ') || '—'}
-              </span>
-
-              {response.execution_summary.fallbacks.length > 0 && (
-                <>
-                  <span className="summary-key">Fallback</span>
-                  <span className="summary-val" style={{ color: 'var(--risk-high-text)' }}>
-                    Fallback used: {response.execution_summary.fallbacks.join(', ')}
-                  </span>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main Results Console */}
-      {response && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          
-          {/* Warning/Degraded banner for fallbacks */}
-          {response.execution_summary.fallbacks.length > 0 && (
-            <div className="error-banner">
-              Fallback used: deterministic template (LLM unavailable)
-            </div>
-          )}
-
-          {/* Results Table */}
+          {/* Typed results */}
           <div className="summary-panel" style={{ background: '#fff' }}>
             <div className="summary-header">Investigation Results</div>
-            
-            {response.results.length > 0 ? (
+
+            {flagged.length > 0 && (
               <div className="table-container" style={{ border: 'none' }}>
+                <div className="detail-section-title">Flagged entities</div>
                 <table className="console-table">
                   <thead>
                     <tr>
-                      <th style={{ width: '40px' }}></th>
+                      <th style={{ width: 40 }} />
                       <th>Entity</th>
                       <th>ID</th>
-                      {hasRiskColumns && (
-                        <>
-                          <th>Risk</th>
-                          <th>Score</th>
-                        </>
-                      )}
-                      <th>Summary/Rules fired</th>
-                      {hasRiskColumns && <th>Recommendation</th>}
+                      <th>Risk</th>
+                      <th>Score</th>
+                      <th>Reasons</th>
+                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {response.results.map((result, idx) => {
-                      const id = result.entity_id || `row-${idx}`;
+                    {flagged.map((result) => {
+                      const id = result.entity_id;
                       const isExpanded = !!expandedRows[id];
-                      const isFlagged = result.result_type === 'flagged';
-                      const flagged = result as FlaggedResult;
-
+                      const created = alertStates[id]?.created;
                       return (
                         <React.Fragment key={id}>
-                          <tr 
-                            className={`clickable ${isExpanded ? 'expanded' : ''}`}
-                            onClick={() => toggleRow(id)}
-                          >
+                          <tr>
                             <td>
-                              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <button type="button" className="suggestion-btn" onClick={() => toggleRow(id)}>
+                                {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                              </button>
                             </td>
-                            <td style={{ textTransform: 'capitalize' }}>
-                              {result.entity_type || '—'}
+                            <td>{result.entity_type}</td>
+                            <td className="mono-cell">{result.entity_id}</td>
+                            <td>
+                              <span className={`risk-badge ${getRiskClass(result.risk_level)}`}>
+                                {result.risk_level}
+                              </span>
                             </td>
-                            <td className="mono-cell">
-                              {result.entity_id || '—'}
-                            </td>
-                            {hasRiskColumns && (
-                              <>
-                                <td>
-                                  {isFlagged ? (
-                                    <span className={`risk-badge ${getRiskClass(flagged.risk_level)}`}>
-                                      {flagged.risk_level}
+                            <td>{result.risk_score.toFixed(1)}</td>
+                            <td style={{ fontSize: 12 }}>{result.reasons.join('; ') || '—'}</td>
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                                <span className="mono-cell" style={{ textTransform: 'uppercase', fontSize: 11 }}>
+                                  Rec: {result.escalation_action}
+                                </span>
+                                {created ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                                    <span style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                                      <Check size={14} /> Alert {alertStates[id].id}
                                     </span>
-                                  ) : '—'}
-                                </td>
-                                <td className="mono-cell">
-                                  {isFlagged ? flagged.risk_score : '—'}
-                                </td>
-                              </>
-                            )}
-                            <td>
-                              {isFlagged ? flagged.reasons.join(', ') : result.summary}
+                                    {onOpenAlerts && (
+                                      <button
+                                        type="button"
+                                        className="secondary-btn"
+                                        style={{ padding: '4px 8px', fontSize: 11 }}
+                                        onClick={() => onOpenAlerts()}
+                                      >
+                                        Open Alerts
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="primary-btn"
+                                    style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 10px', fontSize: 12 }}
+                                    onClick={() => void handleCreateAlert(id, result)}
+                                  >
+                                    <PlusCircle size={14} /> Create Alert Case
+                                  </button>
+                                )}
+                              </div>
                             </td>
-                            {hasRiskColumns && (
-                              <td>
-                                {isFlagged ? (
-                                  <span style={{ 
-                                    textTransform: 'uppercase', 
-                                    fontWeight: '600', 
-                                    fontSize: '11px',
-                                    color: flagged.escalation_action === 'report' ? 'var(--risk-high-text)' : 'var(--risk-med-text)'
-                                  }}>
-                                    {flagged.escalation_action}
-                                  </span>
-                                ) : '—'}
-                              </td>
-                            )}
                           </tr>
-                          
-                          {/* Expanded Details Pane */}
                           {isExpanded && (
                             <tr>
-                              <td colSpan={hasRiskColumns ? 7 : 5} style={{ padding: 0 }}>
-                                <div className="detail-drawer">
-                                  {isFlagged && (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '20px' }}>
-                                      <div>
-                                        <div className="detail-section-title">Risk classification triggers</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                          {flagged.reasons.map((reason, rIdx) => (
-                                            <div key={rIdx} className="reason-item">
-                                              <span className="mono-cell" style={{ fontWeight: '500' }}>· {reason}</span>
-                                              {flagged.evidence_refs[rIdx] && (
-                                                <span className="evidence-ref-link">
-                                                  {flagged.evidence_refs[rIdx]}
-                                                </span>
-                                              )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                      <div>
-                                        <div className="detail-section-title">Risk thresholds & calibration</div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Risk scoring weight:</span>
-                                            <span>{flagged.risk_score}/100</span>
-                                          </div>
-                                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>Decision confidence:</span>
-                                            <span>{Math.floor(flagged.confidence * 100)}%</span>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Evidence Reference Table */}
+                              <td colSpan={7}>
+                                <div className="drawer-actions" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
                                   <div>
-                                    <div className="detail-section-title">Supporting Evidence References</div>
-                                    {renderEvidenceDetails(result.evidence_refs)}
+                                    Confidence: {(result.confidence * 100).toFixed(0)}% · Evidence refs:{' '}
+                                    {result.evidence_refs.join(', ') || '—'}
                                   </div>
-
-                                  {/* Explanation Block */}
-                                  <div>
-                                    <div className="explanation-label">Grounded Narrative Explanation</div>
-                                    <div className="explanation-block">
-                                      {response.answer}
-                                    </div>
-                                  </div>
-
-                                  {/* Escalation/Alert Action Box */}
-                                  {isFlagged && (
-                                    <div className="drawer-actions">
-                                      <div>
-                                        <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>ESCALATION: </span>
-                                        <span className="mono-cell" style={{ fontWeight: '600', textTransform: 'uppercase' }}>
-                                          {flagged.escalation_action}
-                                        </span>
-                                      </div>
-                                      
-                                      {alertStates[result.entity_id] && alertStates[result.entity_id].created ? (
-                                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#16a34a', fontWeight: '500' }}>
-                                          <Check size={14} />
-                                          Alert generated ({alertStates[result.entity_id].id})
-                                        </span>
-                                      ) : (
-                                        <button 
-                                          className="primary-btn"
-                                          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                                          onClick={() => handleCreateAlert(result.entity_id || '', result)}
-                                        >
-                                          <PlusCircle size={14} />
-                                          Create Alert Case
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -675,36 +602,370 @@ export const InvestigateView: React.FC<InvestigateViewProps> = ({ onAlertCreated
                     })}
                   </tbody>
                 </table>
+                <div
+                  style={{
+                    margin: '10px 12px 12px',
+                    padding: '10px 12px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 4,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    Recommended: <strong className="mono-cell">{flagged[0].escalation_action}</strong>.
+                    Create an alert case to send this finding to the disposition queue.
+                  </div>
+                  {alertStates[flagged[0].entity_id]?.created ? (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ color: '#16a34a', fontSize: 12 }}>
+                        <Check size={14} style={{ display: 'inline', marginRight: 4 }} />
+                        Alert {alertStates[flagged[0].entity_id].id}
+                      </span>
+                      {onOpenAlerts && (
+                        <button type="button" className="primary-btn" style={{ padding: '6px 10px', fontSize: 12 }} onClick={() => onOpenAlerts()}>
+                          Open Alerts
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 12px', fontSize: 12 }}
+                      onClick={() => void handleCreateAlert(flagged[0].entity_id, flagged[0])}
+                    >
+                      <PlusCircle size={14} /> Create Alert Case
+                    </button>
+                  )}
+                </div>
               </div>
-            ) : (
-              <div className="empty-state">No matching transactions or customers found for this query scope.</div>
+            )}
+
+            {flagged.length === 0 && edaCohort && (
+              <div className="table-container" style={{ border: 'none' }}>
+                <div className="detail-section-title">EDA / cohort summary</div>
+                <table className="console-table">
+                  <tbody>
+                    <tr>
+                      <td className="mono-cell">Transactions</td>
+                      <td>{edaCohort.transaction_count ?? '—'}</td>
+                    </tr>
+                    <tr>
+                      <td className="mono-cell">Customers</td>
+                      <td>{edaCohort.customer_count ?? '—'}</td>
+                    </tr>
+                    <tr>
+                      <td className="mono-cell">Amount min / mean / max</td>
+                      <td className="mono-cell">
+                        {edaCohort.amount_min_minor != null
+                          ? formatUsdFromMinor(edaCohort.amount_min_minor)
+                          : '—'}{' '}
+                        /{' '}
+                        {edaCohort.amount_mean_minor != null
+                          ? formatUsdFromMinor(Math.round(edaCohort.amount_mean_minor))
+                          : '—'}{' '}
+                        /{' '}
+                        {edaCohort.amount_max_minor != null
+                          ? formatUsdFromMinor(edaCohort.amount_max_minor)
+                          : '—'}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="mono-cell">Segments</td>
+                      <td style={{ fontSize: 12 }}>
+                        {Object.keys(edaCohort.segment_counts).length
+                          ? Object.entries(edaCohort.segment_counts)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(' · ')
+                          : '—'}
+                      </td>
+                    </tr>
+                    {edaCohort.chart_titles.length > 0 && (
+                      <tr>
+                        <td className="mono-cell">Charts</td>
+                        <td style={{ fontSize: 12 }}>{edaCohort.chart_titles.join(' · ')}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {flagged.length === 0 && !edaCohort && thresholdCohort && (
+              <div className="table-container" style={{ border: 'none' }}>
+                <div className="detail-section-title">
+                  Customers meeting threshold (≥{thresholdCohort.minimum_count}
+                  {thresholdCohort.amount_max ? ` under $${thresholdCohort.amount_max}` : ''}) —{' '}
+                  {thresholdCohort.total_matching} match
+                </div>
+                {thresholdCohort.customers.length === 0 ? (
+                  <div className="mono-cell" style={{ padding: 12, fontSize: 12 }}>
+                    No customers met the count threshold in the resolved scope.
+                  </div>
+                ) : (
+                  <table className="console-table">
+                    <thead>
+                      <tr>
+                        <th>Customer</th>
+                        <th>Transaction count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {thresholdCohort.customers.map((row) => (
+                        <tr key={row.customer_id}>
+                          <td className="mono-cell">{row.customer_id}</td>
+                          <td className="mono-cell">{row.transaction_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {flagged.length === 0 && !edaCohort && !thresholdCohort && spendComparison && (
+              <div className="table-container" style={{ border: 'none' }}>
+                <div className="detail-section-title">Spend comparison (30d current vs prior)</div>
+                <table className="console-table">
+                  <thead>
+                    <tr>
+                      <th>Customer</th>
+                      <th>Current</th>
+                      <th>Prior</th>
+                      <th>Delta</th>
+                      <th>Ratio</th>
+                      <th>Elevated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="mono-cell">{spendComparison.entityId}</td>
+                      <td>{formatUsdFromMinor(spendComparison.currentMinor)}</td>
+                      <td>{formatUsdFromMinor(spendComparison.priorMinor)}</td>
+                      <td>{formatUsdFromMinor(spendComparison.deltaMinor)}</td>
+                      <td className="mono-cell">
+                        {spendComparison.ratio != null
+                          ? `${spendComparison.ratio.toFixed(2)}x`
+                          : 'n/a'}
+                      </td>
+                      <td>
+                        <span className={`risk-badge ${spendComparison.elevated ? 'high' : 'low'}`}>
+                          {spendComparison.elevated ? 'YES' : 'NO'}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {flagged.length === 0 &&
+              !edaCohort &&
+              !thresholdCohort &&
+              !spendComparison &&
+              featureRows.length > 0 && (
+                <div className="table-container" style={{ border: 'none' }}>
+                  <div className="detail-section-title">Feature results</div>
+                  <table className="console-table">
+                    <thead>
+                      <tr>
+                        <th>Operation</th>
+                        <th>Window</th>
+                        <th>Entity</th>
+                        <th>Values</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {featureRows.map((f, idx) => (
+                        <tr key={idx}>
+                          <td className="mono-cell">{f.operation}</td>
+                          <td className="mono-cell">{f.windowRole || '—'}</td>
+                          <td className="mono-cell">{f.entityHint}</td>
+                          <td style={{ fontSize: 12 }}>{f.summary}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+            {flagged.length === 0 &&
+              !edaCohort &&
+              !thresholdCohort &&
+              featureRows.length === 0 &&
+              sqlRows.length > 0 && (
+                <div className="table-container" style={{ border: 'none' }}>
+                  <div className="detail-section-title">
+                    Transactions ({sqlRows.length}
+                    {sqlRows.length >= 100 ? ', showing first 100' : ''})
+                  </div>
+                  <table className="console-table">
+                    <thead>
+                      <tr>
+                        <th>Transaction</th>
+                        <th>Customer</th>
+                        <th>Amount</th>
+                        <th>Currency</th>
+                        <th>Date</th>
+                        <th>Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sqlRows.slice(0, 100).map((tx) => (
+                        <tr key={tx.transaction_id}>
+                          <td className="mono-cell">{tx.transaction_id}</td>
+                          <td className="mono-cell">{tx.customer_id}</td>
+                          <td>{formatUsdFromMinor(tx.amount_minor, tx.currency)}</td>
+                          <td>{tx.currency}</td>
+                          <td className="mono-cell" style={{ fontSize: 11 }}>
+                            {tx.occurred_at.replace('T', ' ').slice(0, 19)}
+                          </td>
+                          <td>{tx.transaction_type}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+            {showEmptyState && (
+              <div className="empty-state" style={{ padding: 16 }}>
+                No transaction, feature, cohort, or flagged rows for this query scope.
+                {response.results[0]?.result_type === 'informational' && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)' }}>
+                    Note: {response.results[0].summary}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Charts Panel */}
+          {/* Compliance explanation */}
+          <div className="summary-panel" style={{ background: '#fff' }}>
+            <div className="summary-header">Compliance explanation</div>
+            {explanation ? (
+              <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div>
+                  <strong>Risk level:</strong> {explanation.riskLevel}
+                  {explanation.riskScore != null && (
+                    <> · Score: {explanation.riskScore.toFixed(1)}/100</>
+                  )}
+                  {explanation.confidence != null && (
+                    <> · Confidence: {(explanation.confidence * 100).toFixed(0)}%</>
+                  )}
+                </div>
+                <div>
+                  <strong>Escalation:</strong> {explanation.escalationAction}
+                </div>
+                {explanation.reasons.length > 0 && (
+                  <div>
+                    <div className="detail-section-title">Findings</div>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {explanation.reasons.map((r, i) => (
+                        <li key={i} style={{ fontSize: 13 }}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {explanation.recommendedAction && (
+                  <div>
+                    <div className="detail-section-title">Recommended action</div>
+                    <div style={{ fontSize: 13 }}>{explanation.recommendedAction}</div>
+                  </div>
+                )}
+                {explanation.summary && (
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{explanation.summary}</div>
+                )}
+                <div className="mono-cell" style={{ fontSize: 11 }}>
+                  Evidence IDs: {explanation.evidenceIds.join(', ') || '—'}
+                </div>
+                <div className="mono-cell" style={{ fontSize: 11 }}>
+                  Source: {explanation.source}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+                {explanationFallbackCopy(response)}
+              </div>
+            )}
+          </div>
+
+          {/* Evidence panel */}
+          <div className="summary-panel" style={{ background: '#fff' }}>
+            <div className="summary-header">Supporting evidence</div>
+            {policyNote && (
+              <div className="mono-cell" style={{ padding: '8px 12px 0', fontSize: 11, color: 'var(--text-muted)' }}>
+                Policy excerpts only — not case facts (POLICY_CONTEXT_ONLY).
+              </div>
+            )}
+            {(response.supporting_evidence || []).length === 0 ? (
+              <div className="empty-state" style={{ padding: 12 }}>No tool evidence for this run.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12 }}>
+                {response.supporting_evidence.map((tool, idx) => (
+                  <div key={`${tool.tool}-${idx}`} style={{ borderTop: '1px solid var(--border-color)', paddingTop: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <strong className="mono-cell">
+                        {tool.tool}.{tool.operation} · {tool.status}
+                      </strong>
+                      <span className="mono-cell" style={{ fontSize: 11 }}>
+                        {tool.duration_ms}ms
+                      </span>
+                    </div>
+                    <div style={{ marginTop: 4 }}>
+                      {keyFieldsFromTool(tool).map((kv) => (
+                        <div key={kv.label} className="mono-cell" style={{ fontSize: 11 }}>
+                          {kv.label}: {kv.value}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      {(tool.evidence || []).map((ref) => (
+                        <button
+                          key={ref.evidence_id}
+                          type="button"
+                          className="suggestion-btn"
+                          style={{ fontSize: 10, padding: '2px 6px' }}
+                          onClick={() => void copyText(ref.evidence_id)}
+                          title="Copy evidence id"
+                        >
+                          <Copy size={10} style={{ display: 'inline', marginRight: 4 }} />
+                          {ref.evidence_id}
+                          {copiedId === ref.evidence_id ? ' ✓' : ''}
+                        </button>
+                      ))}
+                      {!tool.evidence?.length && (
+                        <button
+                          type="button"
+                          className="suggestion-btn"
+                          style={{ fontSize: 10, padding: '2px 6px' }}
+                          onClick={() => void copyText(`${tool.tool}.${tool.operation}`)}
+                        >
+                          <Copy size={10} style={{ display: 'inline', marginRight: 4 }} />
+                          {tool.tool}.{tool.operation}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {response.charts && response.charts.length > 0 && (
             <div className="charts-section">
-              {response.charts.map(chart => (
+              {response.charts.map((chart) => (
                 <div key={chart.chart_id} className="chart-card">
                   <div className="chart-title">{chart.title}</div>
-                  
                   {renderSVGChart(chart)}
-                  
-                  {chart.x_label && chart.y_label && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 30px', fontSize: '9px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
-                      <span>X: {chart.x_label}</span>
-                      <span>Y: {chart.y_label}</span>
-                    </div>
-                  )}
-
-                  <div className="chart-caption">
-                    Caption: {chart.title} (lineage refs: {chart.evidence_refs.join(', ')})
-                  </div>
                 </div>
               ))}
             </div>
           )}
-
         </div>
       )}
     </div>

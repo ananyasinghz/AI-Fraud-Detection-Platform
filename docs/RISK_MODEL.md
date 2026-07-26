@@ -32,7 +32,7 @@ Additive points (capped to `[0, 100]`):
 
 | Signal | Demo points |
 | --- | ---: |
-| Rule severity low / medium / high / critical | 15 / 35 / 55 / 75 |
+| Rule severity low / medium / high / critical | 15 / 45 / 55 / 75 |
 | Statistical anomaly | 20 |
 | ML threshold cross (`ml_score >= 0.5`) | 25 |
 | Graph shared device | 20 |

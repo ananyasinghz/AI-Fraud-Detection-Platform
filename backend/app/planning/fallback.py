@@ -39,6 +39,8 @@ def safe_template_for_intent(
         return _retag(templates.plan_feature_only(parsed), planner_version)
 
     if intent is IntentType.PATTERN_SEARCH:
+        if not filters.customer_ids:
+            return None
         return _retag(templates.plan_pattern_search(parsed), planner_version)
 
     if intent is IntentType.ENTITY_INVESTIGATION:

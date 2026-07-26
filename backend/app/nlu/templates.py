@@ -11,6 +11,7 @@ from backend.app.domain.enums import ToolName
 from backend.app.domain.filters import NormalizedFilters
 from backend.app.domain.intent import ParsedIntent
 from backend.app.domain.plan import PlanStep, ValidatedPlan
+from backend.app.nlu.pattern_plans import spec_for_pattern
 
 
 def _phase8_suspicious_chain(
@@ -87,16 +88,7 @@ def plan_sql_amount_lookup(filters: NormalizedFilters) -> ValidatedPlan:
 
 
 def plan_threshold_aggregation(filters: NormalizedFilters) -> ValidatedPlan:
-    entity_ids = list(filters.customer_ids) or ["*"]
-    # Feature ops require concrete entity ids; use placeholder that yields empty if unknown.
-    concrete = [item for item in entity_ids if item != "*"]
-    parameters: dict[str, JsonValue] = {
-        "feature_operation": "transaction_count",
-        "entity_ids": cast(JsonValue, concrete or ["UNKNOWN"]),
-        "window_days": 30,
-    }
-    if filters.currency:
-        parameters["currency"] = filters.currency
+    del filters  # amount_max / currency live on execution filters, not step params.
     return ValidatedPlan(
         strategy="threshold_aggregation",
         planner_version="router_templates.v1",
@@ -104,17 +96,9 @@ def plan_threshold_aggregation(filters: NormalizedFilters) -> ValidatedPlan:
             PlanStep(
                 step_id="sql1",
                 tool=ToolName.SQL_LOOKUP,
-                operation="list_transactions",
-                parameters={},
-                reason="list scoped transactions under threshold",
-            ),
-            PlanStep(
-                step_id="feat1",
-                tool=ToolName.FEATURE_ENGINEERING,
-                operation="compute_feature",
-                parameters=parameters,
-                reason="count transactions for threshold comparison",
-                depends_on=["sql1"],
+                operation="count_by_customer",
+                parameters={"minimum_count": 10},
+                reason="cohort customers with 10+ transactions under amount_max",
             ),
         ],
     )
@@ -122,63 +106,112 @@ def plan_threshold_aggregation(filters: NormalizedFilters) -> ValidatedPlan:
 
 def plan_feature_only(parsed: ParsedIntent) -> ValidatedPlan:
     customer_ids = list(parsed.filters.customer_ids) or ["UNKNOWN"]
+    currency = parsed.filters.currency or "USD"
+    entity_ids = cast(JsonValue, customer_ids[:1])
     return ValidatedPlan(
         strategy="feature_only",
         planner_version="router_templates.v1",
         steps=[
             PlanStep(
-                step_id="feat1",
+                step_id="feat_current",
                 tool=ToolName.FEATURE_ENGINEERING,
                 operation="compute_feature",
                 parameters={
                     "feature_operation": "transaction_total",
-                    "entity_ids": cast(JsonValue, customer_ids[:1]),
+                    "entity_ids": entity_ids,
                     "window_days": 30,
-                    "currency": parsed.filters.currency or "USD",
+                    "window_end_offset_days": 0,
+                    "window_role": "current",
+                    "currency": currency,
                 },
-                reason="compare recent spending features",
-            )
+                reason="current 30d spending total",
+            ),
+            PlanStep(
+                step_id="feat_prior",
+                tool=ToolName.FEATURE_ENGINEERING,
+                operation="compute_feature",
+                parameters={
+                    "feature_operation": "transaction_total",
+                    "entity_ids": entity_ids,
+                    "window_days": 30,
+                    "window_end_offset_days": 30,
+                    "window_role": "prior",
+                    "currency": currency,
+                },
+                reason="prior 30d spending total for comparison",
+                depends_on=["feat_current"],
+            ),
         ],
     )
 
 
 def plan_pattern_search(parsed: ParsedIntent) -> ValidatedPlan:
+    """Typology-aware pattern plan; requires a customer id (router clarifies otherwise)."""
     customer_ids = list(parsed.filters.customer_ids)
-    entity_ids = customer_ids[:1] if customer_ids else ["UNKNOWN"]
-    return ValidatedPlan(
-        strategy="pattern_structuring",
-        planner_version="router_templates.v1",
-        steps=[
+    if not customer_ids:
+        raise ValueError("pattern_search requires a customer id")
+    entity_id = customer_ids[0]
+    entity_ids = cast(JsonValue, [entity_id])
+    currency = parsed.filters.currency or "USD"
+    spec = spec_for_pattern(parsed.filters.pattern_type)
+
+    steps: list[PlanStep] = []
+    prior_step: str | None = None
+    for index, feature_op in enumerate(spec.feature_operations, start=1):
+        step_id = f"feat{index}"
+        steps.append(
             PlanStep(
-                step_id="feat1",
+                step_id=step_id,
                 tool=ToolName.FEATURE_ENGINEERING,
                 operation="compute_feature",
                 parameters={
-                    "feature_operation": "subthreshold_count",
-                    "entity_ids": cast(JsonValue, entity_ids),
-                    "window_days": 30,
-                    "currency": parsed.filters.currency or "USD",
+                    "feature_operation": feature_op,
+                    "entity_ids": entity_ids,
+                    "window_days": spec.window_days,
+                    "currency": currency,
                 },
-                reason="structuring feature support",
+                reason=spec.reason
+                if index == 1
+                else f"additional {feature_op} for {spec.pattern.value}",
+                depends_on=[prior_step] if prior_step else [],
+            )
+        )
+        prior_step = step_id
+
+    anomaly_params: dict[str, JsonValue] = {
+        "mode": "rules_only",
+        "entity_id": entity_id,
+    }
+    if spec.rule_ids is not None:
+        anomaly_params["rule_ids"] = list(spec.rule_ids)
+
+    assert prior_step is not None
+    steps.append(
+        PlanStep(
+            step_id="anom1",
+            tool=ToolName.ANOMALY_DETECTION,
+            operation="detect",
+            parameters=anomaly_params,
+            reason=(
+                f"targeted {spec.pattern.value} rule evaluation"
+                if spec.rule_ids
+                else "multi-rule anomaly evaluation"
             ),
-            PlanStep(
-                step_id="anom1",
-                tool=ToolName.ANOMALY_DETECTION,
-                operation="detect",
-                parameters={
-                    "mode": "rules_only",
-                    "entity_id": entity_ids[0],
-                },
-                reason="rules signal for structuring pattern",
-                depends_on=["feat1"],
-            ),
-            *_phase8_suspicious_chain(
-                depends_on=["anom1"],
-                entity_id=entity_ids[0],
-                classify_op="classify_customer",
-                required=False,
-            ),
-        ],
+            depends_on=[prior_step],
+        )
+    )
+    steps.extend(
+        _phase8_suspicious_chain(
+            depends_on=["anom1"],
+            entity_id=entity_id,
+            classify_op="classify_customer",
+            required=False,
+        )
+    )
+    return ValidatedPlan(
+        strategy=spec.strategy,
+        planner_version="router_templates.v1",
+        steps=steps,
     )
 
 

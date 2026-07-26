@@ -40,13 +40,11 @@
   border: none;
   outline: none;
 }
-
 .nav-item:focus,
 .nav-item:focus-visible,
 .nav-item:active {
   outline: none;
 }
-
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);
@@ -67,7 +65,6 @@ input, button, textarea, select {
   background-color: #18181b;
   color: #515151;
 }
-
 .nav-item.active svg {
   color: #515151;
 }
@@ -128,7 +125,7 @@ input, button, textarea, select {
 
 .nav-item.active {
   background-color: #18181b;
-  color: #ffffff;
+  color: #515151;
 }
 
 .nav-badge {
@@ -662,6 +659,39 @@ input, button, textarea, select {
   gap: 16px;
   max-height: calc(100vh - 160px);
   overflow-y: auto;
+}
+
+.case-file-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
+.case-file-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+
+.case-file-tab:hover {
+  color: var(--text-primary);
+}
+
+.case-file-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent-blue);
+  font-weight: 600;
+}
+
+.case-file-tab-panel {
+  min-height: 120px;
 }
 
 /* Status stepper */

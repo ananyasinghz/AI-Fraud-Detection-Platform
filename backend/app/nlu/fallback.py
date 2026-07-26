@@ -42,6 +42,26 @@ def _money_to_decimal(raw: str) -> Decimal:
     return Decimal(raw.replace(",", ""))
 
 
+def _detect_pattern_type(scrubbed: str) -> PatternType | None:
+    """Map NL keywords to PatternType after customer-id tokens are scrubbed."""
+    # More specific phrases before shorter tokens.
+    if "rapid cash" in scrubbed or "cash-out" in scrubbed or "cash out" in scrubbed:
+        return PatternType.RAPID_CASH_OUT
+    if "high-risk country" in scrubbed or "high risk country" in scrubbed:
+        return PatternType.HIGH_RISK_COUNTRY
+    if "profile deviation" in scrubbed or "profile-deviation" in scrubbed:
+        return PatternType.PROFILE_DEVIATION
+    if "round number" in scrubbed or "round-number" in scrubbed:
+        return PatternType.ROUND_NUMBER
+    if "structuring" in scrubbed:
+        return PatternType.STRUCTURING
+    if "smurfing" in scrubbed:
+        return PatternType.SMURFING
+    if "velocity" in scrubbed:
+        return PatternType.VELOCITY
+    return None
+
+
 def extract_fallback(query: str) -> IntentDraft:
     """Keyword/regex extractor covering mandatory Phase 5 cases and paraphrases."""
     text = query.strip()
@@ -87,8 +107,8 @@ def extract_fallback(query: str) -> IntentDraft:
     scrubbed = lower
     for customer_id in customer_ids:
         scrubbed = scrubbed.replace(customer_id.lower(), " ")
-    if "structuring" in scrubbed or "smurfing" in scrubbed:
-        pattern = PatternType.STRUCTURING if "structuring" in scrubbed else PatternType.SMURFING
+    pattern = _detect_pattern_type(scrubbed)
+    if pattern is not None:
         return IntentDraft(
             intent=IntentType.PATTERN_SEARCH,
             target_scope=TargetScope.CUSTOMER if customer_ids else TargetScope.COHORT,

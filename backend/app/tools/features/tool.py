@@ -40,14 +40,18 @@ def handle_feature_engineering(
     if not isinstance(entity_ids, list) or not entity_ids:
         raise ValueError("entity_ids must be a non-empty list")
     window_days = int(parameters.get("window_days", 30))
+    window_end_offset_days = int(parameters.get("window_end_offset_days", 0))
+    window_role = parameters.get("window_role")
     currency = parameters.get("currency")
+    end_exclusive = context.as_of - timedelta(days=window_end_offset_days)
+    start_inclusive = end_exclusive - timedelta(days=window_days)
     request = FeatureRequest(
         operation=feature_operation,
         version=version,
         as_of=context.as_of,
         window=FeatureWindow(
-            start_inclusive=context.as_of - timedelta(days=window_days),
-            end_exclusive=context.as_of,
+            start_inclusive=start_inclusive,
+            end_exclusive=end_exclusive,
         ),
         scope=EntityScope(
             entity_type=entity_type,
@@ -76,12 +80,18 @@ def handle_feature_engineering(
             error=ToolError(code="UNKNOWN_FEATURE", message=str(exc), retryable=False),
         )
 
+    payload: dict[str, Any] = {"feature_result": result.model_dump(mode="json")}
+    if isinstance(window_role, str) and window_role.strip():
+        payload["window_role"] = window_role.strip()
+        payload["window_end_offset_days"] = window_end_offset_days
+        payload["window_days"] = window_days
+
     return make_result(
         tool=ToolName.FEATURE_ENGINEERING,
         operation=operation,
         status=ToolStatus.SUCCESS,
         scope=context.filters,
-        data={"feature_result": result.model_dump(mode="json")},
+        data=payload,
         warnings=[item.message for item in result.warnings],
         duration_ms=timer.ms(),
         provenance=ToolProvenance(

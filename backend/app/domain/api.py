@@ -1,7 +1,7 @@
 """HTTP request/response contracts for Phase 3-6 APIs."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
@@ -99,6 +99,24 @@ class CustomerResponse(ContractModel):
     status: str
 
 
+class CustomerTransactionSummary(ContractModel):
+    transaction_id: str
+    amount_minor: int
+    currency: str
+    occurred_at: datetime
+    transaction_type: str
+
+
+class CustomerDetailResponse(ContractModel):
+    customer_id: str
+    created_at: datetime
+    status: str
+    segment: str | None = None
+    residence_country: str | None = None
+    kyc_risk_rating: str | None = None
+    recent_transactions: list[CustomerTransactionSummary] = Field(default_factory=list)
+
+
 class CustomerListResponse(ContractModel):
     items: list[CustomerResponse] = Field(default_factory=list)
     total: int = Field(ge=0)
@@ -143,6 +161,7 @@ class AlertCreateRequest(ContractModel):
     investigation_window_start: datetime
     investigation_window_end: datetime
     request_id: str = Field(min_length=1, max_length=128)
+    case_pack: dict[str, Any] | None = None
 
     @field_validator("investigation_window_start", "investigation_window_end")
     @classmethod
@@ -189,3 +208,4 @@ class AlertResponse(ContractModel):
     created_at: datetime
     updated_at: datetime
     history: list[AlertEventResponse] = Field(default_factory=list)
+    case_pack: dict[str, Any] | None = None

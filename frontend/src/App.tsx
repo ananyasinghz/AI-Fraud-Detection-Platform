@@ -9,11 +9,12 @@ function App() {
   const [currentView, setCurrentView] = useState<'investigate' | 'alerts' | 'customers'>('investigate');
   const [openAlertsCount, setOpenAlertsCount] = useState(0);
   const [apiLabel, setApiLabel] = useState('checking…');
+  const [investigatePrefill, setInvestigatePrefill] = useState<string | null>(null);
 
   const updateAlertsBadge = async () => {
     try {
       const list = await api.getAlerts();
-      const openCount = list.filter(a => a.status !== 'closed' && a.status !== 'dismissed').length;
+      const openCount = list.filter((a) => a.status !== 'closed' && a.status !== 'dismissed').length;
       setOpenAlertsCount(openCount);
     } catch (err) {
       console.error(err);
@@ -22,19 +23,37 @@ function App() {
 
   useEffect(() => {
     updateAlertsBadge();
-    api.getHealth()
+    api
+      .getHealth()
       .then((h) => setApiLabel(`Operational (${h.environment || h.status})`))
       .catch(() => setApiLabel('Unavailable — start FastAPI on :8000'));
   }, []);
 
+  const openInvestigateForCustomer = (customerId: string) => {
+    setInvestigatePrefill(`Is customer ID ${customerId} suspicious?`);
+    setCurrentView('investigate');
+  };
+
   const renderActiveView = () => {
     switch (currentView) {
       case 'investigate':
-        return <InvestigateView onAlertCreated={updateAlertsBadge} />;
+        return (
+          <InvestigateView
+            onAlertCreated={updateAlertsBadge}
+            onOpenAlerts={() => setCurrentView('alerts')}
+            initialQuery={investigatePrefill}
+            onInitialQueryConsumed={() => setInvestigatePrefill(null)}
+          />
+        );
       case 'alerts':
-        return <AlertsView onAlertUpdated={updateAlertsBadge} />;
+        return (
+          <AlertsView
+            onAlertUpdated={updateAlertsBadge}
+            onOpenInvestigation={(entityId) => openInvestigateForCustomer(entityId)}
+          />
+        );
       case 'customers':
-        return <CustomersView />;
+        return <CustomersView onInvestigate={openInvestigateForCustomer} />;
       default:
         return <InvestigateView onAlertCreated={updateAlertsBadge} />;
     }

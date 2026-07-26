@@ -165,9 +165,9 @@ def test_points_tier_boundaries_and_ml_separation(policy: RiskScoringPolicy) -> 
         policy=policy,
         evidence_ids=["e1"],
     )
-    # 35 rule + 25 ML = 60 → MEDIUM; ml_score distinct
-    assert medium.risk_score == 60
-    assert medium.risk_level is RiskLevel.MEDIUM
+    # 45 rule + 25 ML = 70 → HIGH; ml_score distinct
+    assert medium.risk_score == 70
+    assert medium.risk_level is RiskLevel.HIGH
     assert medium.ml_score == 0.9
 
     high = classify_transaction_risk(
@@ -182,7 +182,7 @@ def test_points_tier_boundaries_and_ml_separation(policy: RiskScoringPolicy) -> 
     assert high.risk_score >= 70
     assert high.risk_level is RiskLevel.HIGH
 
-    # Exact boundaries
+    # Single medium rule clears low_max (45 >= 40) → MEDIUM
     assert (
         classify_transaction_risk(
             entity_id="b40",
@@ -191,10 +191,10 @@ def test_points_tier_boundaries_and_ml_separation(policy: RiskScoringPolicy) -> 
             policy=policy,
             evidence_ids=["e"],
         ).risk_level
-        is RiskLevel.LOW
-    )  # 35 < 40
+        is RiskLevel.MEDIUM
+    )
 
-    # 40 points via statistical + medium rule = 55 → MEDIUM
+    # Medium rule + statistical = 65 → MEDIUM
     at_medium = classify_transaction_risk(
         entity_id="b40b",
         anomaly_payload={
@@ -205,7 +205,7 @@ def test_points_tier_boundaries_and_ml_separation(policy: RiskScoringPolicy) -> 
         policy=policy,
         evidence_ids=["e"],
     )
-    assert at_medium.risk_score == 55
+    assert at_medium.risk_score == 65
     assert at_medium.risk_level is RiskLevel.MEDIUM
 
 
@@ -244,7 +244,7 @@ def test_customer_rollup_event_peak_pattern_decay_context(policy: RiskScoringPol
     assert breadth.risk_level is RiskLevel.MEDIUM
     assert breadth.composite == pytest.approx(0.4 * 10 + 0.35 * 100 + 0.20 * 100, abs=0.01)
 
-    # Profile missingness warning
+    # Profile missingness warning — real rule signals still cap confidence at 0.6
     missing_profile = rollup_customer_risk(
         customer_id="C2b",
         transaction_risks=[],
@@ -255,6 +255,21 @@ def test_customer_rollup_event_peak_pattern_decay_context(policy: RiskScoringPol
         evidence_ids=["e1"],
     )
     assert "PROFILE_SCORE_MISSING" in missing_profile.warnings
+    assert missing_profile.confidence == pytest.approx(0.6)
+
+    # Empty findings: no fake 0.8→0.6 bounce from zero-score placeholders
+    empty = rollup_customer_risk(
+        customer_id="C2c",
+        transaction_risks=[{"transaction_id": "derived:C2c", "risk_score": 0}],
+        rule_events=[],
+        profile_score=None,
+        context_score=None,
+        policy=policy,
+        evidence_ids=["e1"],
+    )
+    assert empty.confidence == pytest.approx(0.5)
+    assert "PROFILE_SCORE_MISSING" in empty.warnings
+    assert "CONTEXT_SCORE_MISSING" in empty.warnings
 
     # Context alone (or context tipping a near-threshold composite) cannot force suspicious.
     context_only = rollup_customer_risk(

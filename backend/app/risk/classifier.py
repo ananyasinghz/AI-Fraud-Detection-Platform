@@ -58,7 +58,7 @@ def classify_transaction_risk(
                 continue
             severity = str(rule.get("severity") or rule.get("severity_level") or "medium").lower()
             pts = float(
-                policy.severity_points.get(severity, policy.severity_points.get("medium", 35))
+                policy.severity_points.get(severity, policy.severity_points.get("medium", 45))
             )
             points += pts
             rule_id = str(rule.get("rule_id") or rule.get("rule") or "rule")

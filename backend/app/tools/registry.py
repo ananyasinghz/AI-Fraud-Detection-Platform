@@ -101,7 +101,7 @@ def build_tool_registry() -> ToolRegistry:
     registry.register(
         ToolName.SQL_LOOKUP,
         handle_sql_lookup,
-        frozenset({"get_customer", "get_transaction", "list_transactions"}),
+        frozenset({"get_customer", "get_transaction", "list_transactions", "count_by_customer"}),
     )
     registry.register(
         ToolName.FEATURE_ENGINEERING,

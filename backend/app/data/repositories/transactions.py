@@ -19,6 +19,29 @@ class TransactionRepository:
     def get_by_id(self, transaction_id: str) -> Transaction | None:
         return self._session.get(Transaction, transaction_id)
 
+    def list_recent_for_customer(
+        self,
+        customer_id: str,
+        *,
+        as_of: datetime,
+        limit: int = 20,
+    ) -> list[Transaction]:
+        """Most recent transactions at or before as_of (newest first)."""
+        if not is_timezone_aware(as_of):
+            raise ValueError("as_of must include a timezone")
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100")
+        statement: Select[tuple[Transaction]] = (
+            select(Transaction)
+            .where(
+                Transaction.customer_id == customer_id,
+                Transaction.occurred_at <= as_of,
+            )
+            .order_by(Transaction.occurred_at.desc(), Transaction.transaction_id.desc())
+            .limit(limit)
+        )
+        return list(self._session.scalars(statement))
+
     def list_for_customer(
         self,
         customer_id: str,

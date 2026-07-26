@@ -26,7 +26,9 @@ PLANNER_WHITELIST: frozenset[ToolName] = frozenset(
 BLOCKED_TOOLS: frozenset[ToolName] = frozenset()
 
 ALLOWED_OPERATIONS: dict[ToolName, frozenset[str]] = {
-    ToolName.SQL_LOOKUP: frozenset({"get_customer", "get_transaction", "list_transactions"}),
+    ToolName.SQL_LOOKUP: frozenset(
+        {"get_customer", "get_transaction", "list_transactions", "count_by_customer"}
+    ),
     ToolName.FEATURE_ENGINEERING: frozenset({"compute_feature", "run_operation"}),
     ToolName.EDA: frozenset(
         {
@@ -70,15 +72,20 @@ def build_capability_catalog() -> tuple[ToolCapability, ...]:
             operations=ALLOWED_OPERATIONS[ToolName.SQL_LOOKUP],
             param_hints=(
                 "get_customer: {customer_id}; get_transaction: {transaction_id}; "
-                "list_transactions: {} (filters come from request scope)"
+                "list_transactions: {}; count_by_customer: {minimum_count?} "
+                "(filters come from request scope)"
             ),
-            when_to_use="Entity or amount-threshold lookups; listing scoped transactions.",
+            when_to_use=(
+                "Entity or amount-threshold lookups; listing scoped transactions; "
+                "cohort counts by customer."
+            ),
         ),
         ToolCapability(
             tool=ToolName.FEATURE_ENGINEERING,
             operations=ALLOWED_OPERATIONS[ToolName.FEATURE_ENGINEERING],
             param_hints=(
-                "compute_feature: {feature_operation, entity_ids[], window_days, currency?}"
+                "compute_feature: {feature_operation, entity_ids[], window_days, "
+                "window_end_offset_days?, window_role?, currency?}"
             ),
             when_to_use="Aggregates, baselines, structuring/subthreshold features for entities.",
         ),

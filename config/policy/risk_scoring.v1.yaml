@@ -9,7 +9,7 @@ tiers:
 
 severity_points:
   low: 15
-  medium: 35
+  medium: 45
   high: 55
   critical: 75
 

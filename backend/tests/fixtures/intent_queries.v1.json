@@ -10,6 +10,24 @@
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
       "expect_relative_date": "last_30_days",
+      "tools_invoked": [],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
+      "expect_clarification": true
+    },
+    {
+      "id": "m1b",
+      "query": "Find structuring patterns for customer cus-dev-42-structuring-00 in the last 30 days",
+      "mandatory": false,
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "structuring",
+      "expected_customer_ids": [
+        "cus-dev-42-structuring-00"
+      ],
+      "expect_relative_date": "last_30_days",
       "tools_invoked": [
         "feature_engineering",
         "anomaly_detection"
@@ -111,6 +129,35 @@
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
+      "tools_invoked": [],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
+      "expect_clarification": true
+    },
+    {
+      "id": "p2",
+      "query": "Find smurfing patterns last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "smurfing",
+      "tools_invoked": [],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
+      "expect_clarification": true
+    },
+    {
+      "id": "p2b",
+      "query": "Find smurfing patterns for customer cus-dev-42-smurfing-00 in the last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "smurfing",
+      "expected_customer_ids": [
+        "cus-dev-42-smurfing-00"
+      ],
       "tools_invoked": [
         "feature_engineering",
         "anomaly_detection"
@@ -121,11 +168,86 @@
       "expect_clarification": false
     },
     {
-      "id": "p2",
-      "query": "Find smurfing patterns last 30 days",
+      "id": "p2c",
+      "query": "Find velocity patterns for customer cus-dev-42-velocity-00 in the last 30 days",
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
-      "expected_pattern_type": "smurfing",
+      "expected_pattern_type": "velocity",
+      "expected_customer_ids": [
+        "cus-dev-42-velocity-00"
+      ],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
+      "expect_clarification": false
+    },
+    {
+      "id": "p2d",
+      "query": "Find rapid cash-out patterns for customer cus-dev-42-rapid-cash-out-00 in the last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "rapid_cash_out",
+      "expected_customer_ids": [
+        "cus-dev-42-rapid-cash-out-00"
+      ],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
+      "expect_clarification": false
+    },
+    {
+      "id": "p2e",
+      "query": "Find round number patterns for customer cus-dev-42-round-number-00 in the last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "round_number",
+      "expected_customer_ids": [
+        "cus-dev-42-round-number-00"
+      ],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
+      "expect_clarification": false
+    },
+    {
+      "id": "p2f",
+      "query": "Find profile deviation patterns for customer cus-dev-42-profile-deviation-00 in the last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "profile_deviation",
+      "expected_customer_ids": [
+        "cus-dev-42-profile-deviation-00"
+      ],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
+      "expect_clarification": false
+    },
+    {
+      "id": "p2g",
+      "query": "Find high-risk country patterns for customer cus-dev-42-high-risk-country-00 in the last 30 days",
+      "expected_intent": "pattern_search",
+      "expected_route": "full_investigation",
+      "expected_pattern_type": "high_risk_country",
+      "expected_customer_ids": [
+        "cus-dev-42-high-risk-country-00"
+      ],
       "tools_invoked": [
         "feature_engineering",
         "anomaly_detection"
@@ -385,14 +507,12 @@
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
-      "tools_invoked": [
-        "feature_engineering",
+      "tools_invoked": [],
+      "tools_skipped": [
+        "eda",
         "anomaly_detection"
       ],
-      "tools_skipped": [
-        "eda"
-      ],
-      "expect_clarification": false
+      "expect_clarification": true
     },
     {
       "id": "p20",

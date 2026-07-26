@@ -152,9 +152,21 @@ def route_parsed_intent(
         )
 
     if parsed.intent is IntentType.PATTERN_SEARCH:
-        plan = templates.plan_pattern_search(parsed)
         # pattern_type is planning metadata, not a SQL/transaction predicate.
         exec_filters = filters.model_copy(update={"pattern_type": None})
+        if not filters.customer_ids:
+            return RoutingDecision(
+                route=RouteType.FULL_INVESTIGATION,
+                filters=exec_filters,
+                plan=None,
+                tools_invoked_expected=(),
+                tools_skipped_expected=(ToolName.EDA, ToolName.ANOMALY_DETECTION),
+                clarification=(
+                    "Pattern search requires a customer id so features and rules "
+                    "can be scoped to an entity."
+                ),
+            )
+        plan = templates.plan_pattern_search(parsed)
         return RoutingDecision(
             route=RouteType.FULL_INVESTIGATION,
             filters=exec_filters,
