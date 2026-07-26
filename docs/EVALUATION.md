@@ -1,6 +1,6 @@
 # Evaluation
 
-**Status:** Phase 2 query scoping, features, statistics, rules, and naive baseline verified
+**Status:** Phase 3 tools, REST/OpenAPI, and alert lifecycle verified
 
 ## Phase 1 Verification
 
@@ -21,8 +21,23 @@ The Phase 2 fixture suite adds coverage for:
 - the evaluation-only fixed-threshold baseline with UTC day grouping, currency isolation,
   deterministic serialization, and held-out-label/import boundaries
 
-Current result: 169 tests passed with 92.64% branch-aware coverage. The runtime environment
-boundary check confirms that importing the FastAPI app does not load ML or evaluation modules.
+## Phase 3 Verification
+
+The Phase 3 fixture suite adds coverage for:
+
+- tool registry unknown tool/operation rejection, dependency-ordered plan execution, envelope
+  duration/provenance, and Phase 8 stub `SKIPPED` reasons
+- SQL/feature/EDA/anomaly facades with scope propagation, real `ChartSpec` outputs, label-gated
+  EDA, ML skip reasons for synthetic/`ml_eligible=false` rows, and hybrid paths
+- API contracts for query/investigation/score/alert models
+- httpx `TestClient` integration: distinct investigation tool traces, customer/transaction GET,
+  ineligible score skip, eligible ULB fixture score success, alert create idempotency, missing
+  reason rejection, invalid transitions, and append-only history matching current status
+- ULB-attached seed helper using `fixture:creditcard_tiny.csv:<row>` (test-only; not default
+  generation)
+
+Current result: 182 tests passed with 91.56% branch-aware coverage. Importing the FastAPI app
+still does not load `backend.app.ml*` or `backend.evaluation*` (`scripts/verify_environment.py`).
 Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 
 ## ULB Card-Fraud Benchmark

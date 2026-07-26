@@ -16,6 +16,9 @@ class TransactionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def get_by_id(self, transaction_id: str) -> Transaction | None:
+        return self._session.get(Transaction, transaction_id)
+
     def list_for_customer(
         self,
         customer_id: str,

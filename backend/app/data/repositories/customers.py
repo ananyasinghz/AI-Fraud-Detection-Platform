@@ -18,6 +18,9 @@ class CustomerRepository:
     def add_customer(self, customer: Customer) -> None:
         self._session.add(customer)
 
+    def get_by_id(self, customer_id: str) -> Customer | None:
+        return self._session.get(Customer, customer_id)
+
     def add_profile(self, profile: CustomerProfile) -> None:
         conditions = [
             CustomerProfile.customer_id == profile.customer_id,

@@ -14,6 +14,7 @@ def make_client(**overrides: object) -> TestClient:
     values: dict[str, object] = {
         "environment": "test",
         "app_name": "Test Detection API",
+        "database_url": "sqlite:///:memory:",
     }
     values.update(overrides)
     settings = Settings.model_validate(values)

@@ -29,6 +29,7 @@ data/interim/
 data/processed/
 data/splits/
 data/evaluation/
+data/runtime/
 dataset/
 *.csv
 *.parquet
