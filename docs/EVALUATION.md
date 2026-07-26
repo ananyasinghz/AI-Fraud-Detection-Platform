@@ -1,12 +1,29 @@
 # Evaluation
 
-**Status:** Phase 1 data/ML evaluation complete; later-system measures pending
+**Status:** Phase 2 query scoping, features, statistics, rules, and naive baseline verified
 
 ## Phase 1 Verification
 
 The fixture suite covers migrations, foreign keys and indexes, profile as-of resolution, interval overlap rejection, missing-profile warnings, seed idempotency, scenario reproducibility, hidden-label boundaries, immutable ULB validation, duplicate-group isolation, preprocessing parity, validation-only thresholding, artifact reload, strict schema failures, and batch/single scorer parity.
 
-Current result: 46 tests passed with 94.99% branch-aware coverage. Ruff and strict mypy pass.
+## Phase 2 Verification
+
+The Phase 2 fixture suite adds coverage for:
+
+- UTC half-open scopes, filter intersections, empty-scope SQL short-circuiting, stable pagination,
+  amount/minor-unit conversion, and effective-dated segment filtering
+- all 27 named/versioned feature operations with hand-calculated values, denominators, warnings,
+  provenance, boundary timestamps, mixed currencies, and deterministic repeated dispatch
+- Decimal MAD/robust z-score, type-7 IQR, and trailing-baseline deviation, including empty,
+  insufficient, and zero-dispersion cases
+- seven deterministic rules with below/equal/above threshold checks, direct feature-result
+  parity, provenance preservation, unscoped aggregate rejection, and PEP-only negative coverage
+- the evaluation-only fixed-threshold baseline with UTC day grouping, currency isolation,
+  deterministic serialization, and held-out-label/import boundaries
+
+Current result: 169 tests passed with 92.64% branch-aware coverage. The runtime environment
+boundary check confirms that importing the FastAPI app does not load ML or evaluation modules.
+Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 
 ## ULB Card-Fraud Benchmark
 
@@ -34,14 +51,17 @@ Seed `42` produces 58 customers, 59 effective-dated profiles, 58 accounts, 80 co
 
 `861da8d8d4801e8cb625de1e76c5009d5fc15c9e460dbaa8414f4ce10cfb091c`
 
-The generated catalog includes clean controls and nine injected scenario families. These are test inputs with hidden expected signals, not measured detection results. Phase 1 contains no feature/rule engine, so reporting pattern precision/recall now would be false.
+The generated catalog includes clean controls and nine injected scenario families. Phase 2
+provides independently callable features and rules, but this phase does not tune or report
+held-out pattern precision/recall. Hidden manifests remain evaluation-only, and no expected
+signal is presented as a measured detector result.
 
 ## Pending for Later Phases
 
 - synthetic scenario detection results by pattern
 - intent/filter extraction and planner tool-selection accuracy
 - transaction and customer risk results
-- naive baseline versus contextual detector false-positive comparison
+- naive baseline versus contextual detector false-positive comparison on frozen held-out data
 - explanation citation/faithfulness
 - p50/p95 end-to-end latency
 

@@ -16,12 +16,13 @@ def create_database_engine(database_url: str | None = None) -> Engine:
     """Create an engine with SQLite foreign-key enforcement."""
     url = database_url or get_settings().database_url
     parsed_url = make_url(url)
-    if parsed_url.drivername.startswith("sqlite") and parsed_url.database not in {
-        None,
-        "",
-        ":memory:",
-    }:
-        Path(parsed_url.database).parent.mkdir(parents=True, exist_ok=True)
+    database_path = parsed_url.database
+    if (
+        parsed_url.drivername.startswith("sqlite")
+        and database_path is not None
+        and database_path not in {"", ":memory:"}
+    ):
+        Path(database_path).parent.mkdir(parents=True, exist_ok=True)
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     engine = create_engine(url, connect_args=connect_args)
 

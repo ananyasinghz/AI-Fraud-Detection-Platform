@@ -65,6 +65,36 @@ class EntityType(StrEnum):
     TRANSACTION = "transaction"
 
 
+class TransactionDirection(StrEnum):
+    CREDIT = "credit"
+    DEBIT = "debit"
+
+
+class FeatureGrouping(StrEnum):
+    HOUR = "hour"
+    DAY = "day"
+    ACCOUNT = "account"
+    COUNTERPARTY = "counterparty"
+    DEVICE = "device"
+    COUNTRY = "country"
+    TRANSACTION_TYPE = "transaction_type"
+
+
+class ValueType(StrEnum):
+    INTEGER = "integer"
+    DECIMAL = "decimal"
+    FLOAT = "float"
+    BOOLEAN = "boolean"
+    STRING = "string"
+
+
+class RuleSeverity(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class RiskLevel(StrEnum):
     LOW = "LOW"
     MEDIUM = "MEDIUM"

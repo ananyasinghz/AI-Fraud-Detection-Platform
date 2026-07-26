@@ -1,9 +1,10 @@
 # Data Dictionary
 
-**Status:** Phase 1 implemented  
+**Status:** Phase 2 detection core implemented
 **Contract version:** `v1`
 
-This document covers the frozen Phase 0 boundary contracts and the Phase 1 relational and ULB ML schemas.
+This document covers the frozen boundary contracts, relational and ULB ML schemas, and the
+Phase 2 query-scoping, feature, statistics, and deterministic-rule contracts.
 
 ## Contract Conventions
 
@@ -40,6 +41,42 @@ This document covers the frozen Phase 0 boundary contracts and the Phase 1 relat
 | `pattern_type` | enum or null | known AML pattern |
 | `amount_min`, `amount_max` | decimal or null | non-negative and ordered |
 | `max_results` | integer | 1–1,000; default 100 |
+
+## QueryScope
+
+`QueryScope` resolves normalized filters before repositories or feature operations run.
+Transaction windows are UTC and half-open: `start_inclusive <= occurred_at < end_exclusive`.
+Entity, country, type, direction, channel, currency, and amount predicates are intersected;
+an empty intersection is represented explicitly and short-circuits database access. Results
+use stable `(occurred_at, transaction_id)` ordering with bounded `limit` and `offset`.
+
+Decimal filter amounts are converted to integer minor units only when a currency is explicit.
+Values with precision beyond that currency's minor unit are rejected. No FX conversion occurs.
+
+## Feature Operations
+
+`FeatureRequest` contains an operation/version, UTC `as_of`, half-open `FeatureWindow`, explicit
+`EntityScope`, transaction predicates, and optional grouping dimensions. `FeatureResult` returns
+typed values, named denominators, machine-readable warnings, and provenance including a stable
+query identifier, dataset fingerprint, operation version, and policy version.
+
+The `v1` registry provides transaction and rolling aggregates, amount statistics, period
+comparison and rates, cash-deposit and sub-threshold activity, round-number and rapid-cash-out
+signals, distinct dimensions, profile comparisons, account tenure, profile completeness, and
+data-sufficiency indicators. Empty, mixed-currency, or insufficient inputs remain explicit
+warning-bearing results and never widen scope.
+
+## Statistical Signals and Rules
+
+Robust statistics use deterministic `Decimal` arithmetic. Available descriptive signals are
+median absolute deviation/robust z-score, type-7 IQR bounds, and trailing-baseline deviation.
+Zero dispersion or baseline values produce warnings and nullable outputs, never risk labels.
+
+Deterministic rules consume supplied feature results and external policy only. `RuleResult`
+records rule/version, fired state, severity, entity, features and thresholds used, evidence
+references, and a reason code. Rules do not query storage or repeat feature aggregation.
+Profile deviation requires sufficient observed data and a material activity mismatch; PEP,
+KYC rating, and residence country cannot independently fire it.
 
 ## ParsedIntent
 
@@ -168,13 +205,21 @@ Indexes cover transaction time, customer/time, account/time, amount, type, count
 - `alerts`: entity, risk snapshot, escalation, policy version, and a unique idempotency key.
 - `alert_events`: append-only status transition evidence with reviewer, reason, request, evidence version, and risk-policy version. Index: `(alert_id, timestamp)`.
 
-Phase 1 creates storage only; it does not implement later risk or lifecycle behavior.
+The schema creates lifecycle storage only; Phase 2 does not implement risk scoring or lifecycle
+behavior.
 
 ## Synthetic AML Bundles
 
 Runtime bundles contain customers, profiles, accounts, counterparties, devices, and transactions. They contain no `scenario_label`, `is_suspicious`, injected-pattern field, or expected outcome. Offline manifests under `data/evaluation/` contain scenario annotations and are read only by `backend/evaluation/`.
 
-`scenario_catalog.v1` uses fixed UTC windows. `reporting_thresholds.v1` defines an explicitly illustrative USD 10,000 threshold (`1,000,000` cents), not legal guidance. Seeds `42` and `99` identify development and held-out populations.
+`scenario_catalog.v1` uses fixed UTC windows. `reporting_thresholds.v1` defines illustrative,
+versioned jurisdiction/currency thresholds for the Phase 2 rules, including a USD 10,000
+reporting threshold (`1,000,000` cents); it is not legal guidance. Seeds `42` and `99` identify
+development and held-out populations.
+
+The evaluation-only `naive_baseline.v1` applies one frozen amount threshold and one UTC
+customer/day transaction-count threshold to label-free runtime bundles. It is not a runtime
+tool, does not create alerts, and does not accept held-out manifests or labels.
 
 ## ULB ML Schema
 

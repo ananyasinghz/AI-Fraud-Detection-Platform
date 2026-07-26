@@ -1,0 +1,13 @@
+version: naive_baseline.v1
+jurisdiction: US
+currency: USD
+amount_threshold_minor: 1000000
+transactions_per_day_threshold: 10
+utc_day_semantics: occurred_at_utc_calendar_day
+amount_currency_handling: configured_currency_only_without_fx
+daily_count_currency_scope: all_currencies
+provenance:
+  selection_data: development_scenarios
+  frozen_before_evaluation: true
+  method: fixed_expert_benchmark
+  notes: Thresholds were selected on development scenarios and frozen before held-out evaluation.

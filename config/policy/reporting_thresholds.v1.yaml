@@ -3,9 +3,47 @@ jurisdiction: DEMO-US
 currency: USD
 reporting_threshold_minor: 1000000
 structuring:
+  version: structuring.v1
+  window_days: 7
   minimum_count: 3
   lower_bound_ratio: 0.70
   upper_bound_ratio: 0.99
+smurfing:
+  version: smurfing.v1
+  window_hours: 48
+  minimum_transactions: 5
+  minimum_distinct_senders: 4
+velocity:
+  version: velocity.v1
+  window_minutes: 120
+  minimum_transaction_count: 10
+rapid_cash_out:
+  version: rapid_cash_out.v1
+  window_minutes: 120
+  minimum_inflow_minor: 500000
+  minimum_cash_out_ratio: 0.80
+round_numbers:
+  version: round_numbers.v1
+  window_days: 30
+  minimum_transaction_count: 8
+  minimum_round_number_ratio: 0.80
+  rounding_increment_minor: 100000
+profile_deviation:
+  version: profile_deviation.v1
+  window_days: 30
+  minimum_transaction_count: 3
+  minimum_observed_volume_minor: 500000
+  minimum_expected_volume_ratio: 3.0
+high_risk_country:
+  version: high_risk_country.v1
+  window_days: 30
+  minimum_transaction_count: 3
+  minimum_total_minor: 500000
 high_risk_countries:
   - ZZ
+data_sufficiency:
+  version: data_sufficiency.v1
+  minimum_transactions: 3
+  minimum_history_days: 30
+  minimum_baseline_transactions: 6
 disclaimer: Synthetic hackathon policy only; not legal or compliance advice.

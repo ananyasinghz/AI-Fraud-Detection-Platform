@@ -8,22 +8,7 @@ from pydantic import Field
 
 from backend.app.domain.base import ContractModel
 from backend.app.generation.contracts import AwareDatetime, ScenarioType
-
-
-class StructuringPolicy(ContractModel):
-    minimum_count: int = Field(ge=2)
-    lower_bound_ratio: float = Field(gt=0, lt=1)
-    upper_bound_ratio: float = Field(gt=0, lt=1)
-
-
-class PolicyConfig(ContractModel):
-    version: str
-    jurisdiction: str
-    currency: str = Field(pattern=r"^[A-Z]{3}$")
-    reporting_threshold_minor: int = Field(gt=0)
-    structuring: StructuringPolicy
-    high_risk_countries: list[str]
-    disclaimer: str
+from backend.app.policy.config import PolicyConfig, StructuringPolicy, load_policy_config
 
 
 class GenerationConfig(ContractModel):
@@ -45,9 +30,14 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_policy_config(path: Path) -> PolicyConfig:
-    return PolicyConfig.model_validate(_read_yaml(path))
-
-
 def load_generation_config(path: Path) -> GenerationConfig:
     return GenerationConfig.model_validate(_read_yaml(path))
+
+
+__all__ = [
+    "GenerationConfig",
+    "PolicyConfig",
+    "StructuringPolicy",
+    "load_generation_config",
+    "load_policy_config",
+]
