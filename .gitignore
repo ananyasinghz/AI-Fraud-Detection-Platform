@@ -35,7 +35,7 @@ dataset/
 *.db
 *.sqlite
 *.sqlite3
-models/
+/models/
 *.pkl
 *.joblib
 generated/
