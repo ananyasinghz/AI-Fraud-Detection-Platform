@@ -109,6 +109,17 @@ def validate_plan_semantics(
     if parsed.intent is IntentType.FEATURE_COMPARISON and ToolName.EDA in tools_used:
         reasons.append("eda_not_allowed_for_feature_comparison")
 
+    # Graph requires entity/cohort scope except broad exploration.
+    if ToolName.GRAPH_ANALYSIS in tools_used:
+        has_entity = bool(parsed.filters.customer_ids or parsed.filters.account_ids)
+        if (
+            parsed.intent is not IntentType.BROAD_EXPLORATION
+            and not has_entity
+            and parsed.target_scope
+            not in {TargetScope.CUSTOMER, TargetScope.ACCOUNT, TargetScope.COHORT}
+        ):
+            reasons.append("unbounded_graph_without_scope")
+
     if reasons:
         return _reject(*reasons)
     return ValidationResult(plan=candidate, reasons=())

@@ -6,20 +6,20 @@ from dataclasses import dataclass
 
 from backend.app.domain.enums import ToolName
 
-# Phase 6 MVP whitelist — implemented tools only (no Phase 7/8).
+# Phase 7 whitelist — implemented tools only (no Phase 8).
 PLANNER_WHITELIST: frozenset[ToolName] = frozenset(
     {
         ToolName.SQL_LOOKUP,
         ToolName.FEATURE_ENGINEERING,
         ToolName.EDA,
         ToolName.ANOMALY_DETECTION,
+        ToolName.GRAPH_ANALYSIS,
+        ToolName.RETRIEVAL,
     }
 )
 
 BLOCKED_TOOLS: frozenset[ToolName] = frozenset(
     {
-        ToolName.GRAPH_ANALYSIS,
-        ToolName.RETRIEVAL,
         ToolName.RISK_CLASSIFICATION,
         ToolName.VERIFICATION,
         ToolName.ESCALATION,
@@ -40,6 +40,15 @@ ALLOWED_OPERATIONS: dict[ToolName, frozenset[str]] = {
         }
     ),
     ToolName.ANOMALY_DETECTION: frozenset({"detect"}),
+    ToolName.GRAPH_ANALYSIS: frozenset(
+        {
+            "shared_device",
+            "circular_transfers",
+            "two_hop_exposure",
+            "connected_accounts",
+        }
+    ),
+    ToolName.RETRIEVAL: frozenset({"search_policy"}),
 }
 
 
@@ -83,6 +92,27 @@ def build_capability_catalog() -> tuple[ToolCapability, ...]:
             param_hints="detect: {mode: rules_only|ml_only|hybrid, entity_id?|transaction_id?}",
             when_to_use="Rules/ML anomaly signals after scoped features or transaction load.",
         ),
+        ToolCapability(
+            tool=ToolName.GRAPH_ANALYSIS,
+            operations=ALLOWED_OPERATIONS[ToolName.GRAPH_ANALYSIS],
+            param_hints=(
+                "shared_device|circular_transfers|two_hop_exposure|connected_accounts: "
+                "{customer_id?|account_id?}"
+            ),
+            when_to_use=(
+                "Shared-device, circular transfer, or multi-hop exposure questions; "
+                "requires entity/cohort scope."
+            ),
+        ),
+        ToolCapability(
+            tool=ToolName.RETRIEVAL,
+            operations=ALLOWED_OPERATIONS[ToolName.RETRIEVAL],
+            param_hints="search_policy: {query, top_k?}",
+            when_to_use=(
+                "Optional policy-context snippets for reviewers; never replaces evidence "
+                "and never states legal conclusions."
+            ),
+        ),
     )
 
 
@@ -93,5 +123,5 @@ def catalog_prompt_block() -> str:
         lines.append(f"- {item.tool.value}: ops=[{ops}]")
         lines.append(f"  params: {item.param_hints}")
         lines.append(f"  when: {item.when_to_use}")
-    lines.append("Do not select risk_classification, explanation, graph_analysis, or retrieval.")
+    lines.append("Do not select risk_classification, explanation, verification, or escalation.")
     return "\n".join(lines)

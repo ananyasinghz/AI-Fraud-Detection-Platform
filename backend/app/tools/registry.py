@@ -12,6 +12,8 @@ from backend.app.tools.anomaly.facade import handle_anomaly_detection
 from backend.app.tools.context import ToolContext
 from backend.app.tools.eda.profiling import handle_eda
 from backend.app.tools.features.tool import handle_feature_engineering
+from backend.app.tools.graph.tool import handle_graph_analysis
+from backend.app.tools.retrieval.tool import handle_retrieval
 from backend.app.tools.sql.lookup import handle_sql_lookup
 from backend.app.tools.stubs import handle_explanation, handle_risk_classification
 
@@ -117,6 +119,23 @@ def build_tool_registry() -> ToolRegistry:
         ToolName.ANOMALY_DETECTION,
         handle_anomaly_detection,
         frozenset({"detect"}),
+    )
+    registry.register(
+        ToolName.GRAPH_ANALYSIS,
+        handle_graph_analysis,
+        frozenset(
+            {
+                "shared_device",
+                "circular_transfers",
+                "two_hop_exposure",
+                "connected_accounts",
+            }
+        ),
+    )
+    registry.register(
+        ToolName.RETRIEVAL,
+        handle_retrieval,
+        frozenset({"search_policy"}),
     )
     registry.register(
         ToolName.RISK_CLASSIFICATION,

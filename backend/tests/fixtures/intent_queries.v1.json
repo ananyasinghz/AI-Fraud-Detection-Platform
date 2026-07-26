@@ -10,8 +10,13 @@
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
       "expect_relative_date": "last_30_days",
-      "tools_invoked": ["feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -21,8 +26,14 @@
       "expected_intent": "threshold_aggregation",
       "expected_route": "feature_only",
       "expected_amount_max": "10000",
-      "tools_invoked": ["sql_lookup", "feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -31,9 +42,19 @@
       "mandatory": true,
       "expected_intent": "entity_investigation",
       "expected_route": "full_investigation",
-      "expected_customer_ids": ["4521"],
-      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "expected_customer_ids": [
+        "4521"
+      ],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering",
+        "anomaly_detection",
+        "graph_analysis",
+        "retrieval"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -42,10 +63,17 @@
       "mandatory": true,
       "expected_intent": "feature_comparison",
       "expected_route": "feature_only",
-      "expected_customer_ids": ["123"],
+      "expected_customer_ids": [
+        "123"
+      ],
       "expect_relative_date": "this_month",
-      "tools_invoked": ["feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -55,8 +83,13 @@
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
       "expected_amount_min": "10000",
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -65,7 +98,10 @@
       "mandatory": true,
       "expected_intent": "broad_exploration",
       "expected_route": "full_investigation",
-      "tools_invoked": ["eda"],
+      "tools_invoked": [
+        "eda",
+        "retrieval"
+      ],
       "tools_skipped": [],
       "expect_clarification": false
     },
@@ -75,8 +111,13 @@
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
-      "tools_invoked": ["feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -85,8 +126,13 @@
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
       "expected_pattern_type": "smurfing",
-      "tools_invoked": ["feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -95,8 +141,13 @@
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
       "expected_amount_min": "10000",
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -105,8 +156,13 @@
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
       "expected_amount_min": "10000",
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -115,8 +171,14 @@
       "expected_intent": "threshold_aggregation",
       "expected_route": "feature_only",
       "expected_amount_max": "10000",
-      "tools_invoked": ["sql_lookup", "feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -125,8 +187,14 @@
       "expected_intent": "threshold_aggregation",
       "expected_route": "feature_only",
       "expected_amount_max": "10000",
-      "tools_invoked": ["sql_lookup", "feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -134,9 +202,19 @@
       "query": "Is customer ID C-99 suspicious?",
       "expected_intent": "entity_investigation",
       "expected_route": "full_investigation",
-      "expected_customer_ids": ["C-99"],
-      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "expected_customer_ids": [
+        "C-99"
+      ],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering",
+        "anomaly_detection",
+        "graph_analysis",
+        "retrieval"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -144,9 +222,19 @@
       "query": "Investigate customer 4521",
       "expected_intent": "entity_investigation",
       "expected_route": "full_investigation",
-      "expected_customer_ids": ["4521"],
-      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "expected_customer_ids": [
+        "4521"
+      ],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering",
+        "anomaly_detection",
+        "graph_analysis",
+        "retrieval"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -154,10 +242,17 @@
       "query": "Did customer 123 increase spending this month?",
       "expected_intent": "feature_comparison",
       "expected_route": "feature_only",
-      "expected_customer_ids": ["123"],
+      "expected_customer_ids": [
+        "123"
+      ],
       "expect_relative_date": "this_month",
-      "tools_invoked": ["feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -165,10 +260,17 @@
       "query": "Customer 55 spending spike this month",
       "expected_intent": "feature_comparison",
       "expected_route": "feature_only",
-      "expected_customer_ids": ["55"],
+      "expected_customer_ids": [
+        "55"
+      ],
       "expect_relative_date": "this_month",
-      "tools_invoked": ["feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -176,7 +278,10 @@
       "query": "Analyze this dataset for suspicious activity",
       "expected_intent": "broad_exploration",
       "expected_route": "full_investigation",
-      "tools_invoked": ["eda"],
+      "tools_invoked": [
+        "eda",
+        "retrieval"
+      ],
       "tools_skipped": [],
       "expect_clarification": false
     },
@@ -185,7 +290,10 @@
       "query": "Run broad EDA on the dataset",
       "expected_intent": "broad_exploration",
       "expected_route": "full_investigation",
-      "tools_invoked": ["eda"],
+      "tools_invoked": [
+        "eda",
+        "retrieval"
+      ],
       "tools_skipped": [],
       "expect_clarification": false
     },
@@ -194,9 +302,16 @@
       "query": "Lookup customer ID A1",
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
-      "expected_customer_ids": ["A1"],
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "expected_customer_ids": [
+        "A1"
+      ],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -204,9 +319,16 @@
       "query": "Get customer 9001 details",
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
-      "expected_customer_ids": ["9001"],
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "expected_customer_ids": [
+        "9001"
+      ],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -214,8 +336,13 @@
       "query": "Score transaction TX-1 for fraud",
       "expected_intent": "transaction_scoring",
       "expected_route": "full_investigation",
-      "tools_invoked": ["sql_lookup", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "tools_invoked": [
+        "sql_lookup",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -223,7 +350,9 @@
       "query": "Explain why customer 12 was flagged",
       "expected_intent": "explanation_request",
       "expected_route": "full_investigation",
-      "expected_customer_ids": ["12"],
+      "expected_customer_ids": [
+        "12"
+      ],
       "expect_clarification": true,
       "needs_planner": false
     },
@@ -241,8 +370,13 @@
       "expected_intent": "simple_lookup",
       "expected_route": "simple_lookup",
       "expected_amount_min": "25000",
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -251,8 +385,13 @@
       "expected_intent": "pattern_search",
       "expected_route": "full_investigation",
       "expected_pattern_type": "structuring",
-      "tools_invoked": ["feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "tools_invoked": [
+        "feature_engineering",
+        "anomaly_detection"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -260,9 +399,19 @@
       "query": "Is id 777 suspicious?",
       "expected_intent": "entity_investigation",
       "expected_route": "full_investigation",
-      "expected_customer_ids": ["777"],
-      "tools_invoked": ["sql_lookup", "feature_engineering", "anomaly_detection"],
-      "tools_skipped": ["eda"],
+      "expected_customer_ids": [
+        "777"
+      ],
+      "tools_invoked": [
+        "sql_lookup",
+        "feature_engineering",
+        "anomaly_detection",
+        "graph_analysis",
+        "retrieval"
+      ],
+      "tools_skipped": [
+        "eda"
+      ],
       "expect_clarification": false
     },
     {
@@ -291,10 +440,17 @@
       "query": "Feature comparison for customer 42 this month",
       "expected_intent": "feature_comparison",
       "expected_route": "feature_only",
-      "expected_customer_ids": ["42"],
+      "expected_customer_ids": [
+        "42"
+      ],
       "expect_relative_date": "this_month",
-      "tools_invoked": ["feature_engineering"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "feature_engineering"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -304,8 +460,13 @@
       "expected_route": "simple_lookup",
       "expected_amount_min": "10000",
       "expect_relative_date": "last_7_days",
-      "tools_invoked": ["sql_lookup"],
-      "tools_skipped": ["eda", "anomaly_detection"],
+      "tools_invoked": [
+        "sql_lookup"
+      ],
+      "tools_skipped": [
+        "eda",
+        "anomaly_detection"
+      ],
       "expect_clarification": false
     },
     {
@@ -313,7 +474,10 @@
       "query": "Dataset suspicious activity overview",
       "expected_intent": "broad_exploration",
       "expected_route": "full_investigation",
-      "tools_invoked": ["eda"],
+      "tools_invoked": [
+        "eda",
+        "retrieval"
+      ],
       "tools_skipped": [],
       "expect_clarification": false
     }

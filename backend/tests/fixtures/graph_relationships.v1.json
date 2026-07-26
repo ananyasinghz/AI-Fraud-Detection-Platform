@@ -1,0 +1,28 @@
+{
+  "version": "graph_relationships.v1",
+  "seed": 42,
+  "split": "dev",
+  "notes": "Evaluation-only gold for Phase 7 deliberate graph relationships. Not imported by backend.app.",
+  "cases": [
+    {
+      "id": "shared_device",
+      "operation": "shared_device",
+      "customer_prefix_a": "graph-share-a",
+      "customer_prefix_b": "graph-share-b",
+      "shared_device_contains": "dev-graph-shared"
+    },
+    {
+      "id": "circular_transfers",
+      "operation": "circular_transfers",
+      "account_prefix_a": "graph-cycle-a",
+      "account_prefix_b": "graph-cycle-b"
+    },
+    {
+      "id": "two_hop_exposure",
+      "operation": "two_hop_exposure",
+      "customer_prefix": "graph-hop-a",
+      "expect_account_prefix": "graph-hop-b",
+      "expect_counterparty_contains": "graph-hop-cp"
+    }
+  ]
+}

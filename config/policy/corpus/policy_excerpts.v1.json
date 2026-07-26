@@ -1,0 +1,50 @@
+{
+  "version": "policy_excerpts.v1",
+  "documents": [
+    {
+      "doc_id": "finCEN-structuring-overview",
+      "title": "Structuring and Currency Transaction Reporting (illustrative excerpt)",
+      "source_url": "https://www.fincen.gov/",
+      "publication_date": "2020-01-01",
+      "jurisdiction": "US",
+      "section": "structuring",
+      "text": "Structuring involves breaking transactions into amounts at or below reporting thresholds to evade currency transaction reporting. This excerpt is for developer demo context only and is not legal advice."
+    },
+    {
+      "doc_id": "basel-aml-customer-due-diligence",
+      "title": "Customer due diligence (illustrative excerpt)",
+      "source_url": "https://www.bis.org/",
+      "publication_date": "2019-06-01",
+      "jurisdiction": "INTL",
+      "section": "customer_due_diligence",
+      "text": "Financial institutions should identify and verify customer identity and understand the purpose of the business relationship. Shared devices or linked accounts may warrant enhanced review. Demo text only; not regulatory guidance."
+    },
+    {
+      "doc_id": "fatf-recommendation-wire-transfers",
+      "title": "Wire transfer information (illustrative excerpt)",
+      "source_url": "https://www.fatf-gafi.org/",
+      "publication_date": "2021-03-01",
+      "jurisdiction": "INTL",
+      "section": "wire_transfers",
+      "text": "Originator and beneficiary information should accompany wire transfers to support tracing. Circular or layered transfers between related accounts can be a red-flag typology in training materials. Not legal advice."
+    },
+    {
+      "doc_id": "ofac-sanctions-screening-context",
+      "title": "Sanctions screening context (illustrative excerpt)",
+      "source_url": "https://ofac.treasury.gov/",
+      "publication_date": "2022-01-01",
+      "jurisdiction": "US",
+      "section": "sanctions_screening",
+      "text": "Institutions screen customers and counterparties against sanctions lists as part of compliance programs. Retrieved policy text supports reviewer context and must not replace transaction evidence."
+    },
+    {
+      "doc_id": "reporting-threshold-demo",
+      "title": "Reporting thresholds (demo policy note)",
+      "source_url": "https://example.com/demo-policy",
+      "publication_date": "2024-01-01",
+      "jurisdiction": "US",
+      "section": "reporting_thresholds",
+      "text": "Demo configuration uses an illustrative USD 10,000 reporting threshold for cash deposits. Values are not legal thresholds. Use only as reviewer context alongside deterministic rule and feature evidence."
+    }
+  ]
+}

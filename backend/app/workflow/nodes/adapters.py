@@ -15,7 +15,6 @@ from backend.app.tools.registry import (
 )
 from backend.app.tools.stubs import handle_explanation, handle_risk_classification
 
-PHASE_7_TOOLS = frozenset({ToolName.GRAPH_ANALYSIS, ToolName.RETRIEVAL})
 PHASE_8_TOOLS = frozenset(
     {
         ToolName.RISK_CLASSIFICATION,
@@ -70,8 +69,6 @@ def run_tool_node(
     registry: ToolRegistry,
 ) -> ToolResult:
     """Invoke one plan step through the registry or a structured skip stub."""
-    if tool in PHASE_7_TOOLS:
-        return _skipped_stub(tool, operation, context, "PHASE_7_NOT_IMPLEMENTED")
     if tool is ToolName.VERIFICATION or tool is ToolName.ESCALATION:
         return _skipped_stub(tool, operation, context, "PHASE_8_NOT_IMPLEMENTED")
     if tool is ToolName.RISK_CLASSIFICATION:

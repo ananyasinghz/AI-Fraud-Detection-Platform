@@ -1,11 +1,11 @@
 # Data Dictionary
 
-**Status:** Phase 6 validated dynamic planner implemented
+**Status:** Phase 7 relationship graph and policy retrieval implemented
 **Contract version:** `v1`
 
 This document covers the frozen boundary contracts, relational and ULB ML schemas, Phase 2
-query-scoping/feature/statistics/rules contracts, Phase 5 NL → intent → route → template plans,
-and Phase 6 dynamic planning/validation.
+query-scoping/feature/statistics/rules contracts, Phase 5–6 NL routing/planning, and Phase 7
+NetworkX graph analysis plus Chroma/local policy retrieval.
 
 ## Contract Conventions
 
@@ -125,15 +125,37 @@ error code `CLARIFICATION_REQUIRED`.
 | `planner_enabled` | `FRAUD_PLANNER_ENABLED` | `false` | CI uses template fallback |
 | `planner_version` | `FRAUD_PLANNER_VERSION` | `dynamic_planner.v1` | Provenance string |
 | `planner_max_steps` | `FRAUD_PLANNER_MAX_STEPS` | `20` | Hard cap on plan length |
+| `graph_enabled` | `FRAUD_GRAPH_ENABLED` | `true` | Off → `GRAPH_DISABLED` skip |
+| `retrieval_enabled` | `FRAUD_RETRIEVAL_ENABLED` | `true` | Off → `RETRIEVAL_DISABLED` skip |
+| `chroma_persist_dir` | `FRAUD_CHROMA_PERSIST_DIR` | `data/runtime/chroma_policy` | Index persist root |
+| `policy_corpus_path` | `FRAUD_POLICY_CORPUS_PATH` | `config/policy/corpus/policy_excerpts.v1.json` | Committed corpus |
+| `retrieval_top_k` | `FRAUD_RETRIEVAL_TOP_K` | `3` | Default hit count |
 
 ### Planner whitelist and validation
 
-MVP whitelist (schemas only; no live Python callables in the prompt): `sql_lookup`,
-`feature_engineering`, `eda`, `anomaly_detection` with registry operations. Rejected at plan
-time: `risk_classification`, `explanation`, `graph_analysis`, `retrieval`, and other Phase 7/8
-tools. Semantic checks also reject unknown operations, missing entity parameters, over-broad EDA
-on entity-scoped intents, and empty/oversized plans. Domain `ValidatedPlan` still rejects cycles
-and duplicate identical steps.
+Whitelist (schemas only): `sql_lookup`, `feature_engineering`, `eda`, `anomaly_detection`,
+`graph_analysis`, `retrieval`. Rejected at plan time: Phase 8 `risk_classification`,
+`explanation`, `verification`, `escalation`. Semantic checks reject unknown operations, missing
+entity parameters, over-broad EDA on entity-scoped intents, unbounded graph without scope (except
+broad exploration), and empty/oversized plans. Domain `ValidatedPlan` still rejects cycles and
+duplicate identical steps.
+
+### Phase 7 graph and retrieval
+
+**Graph (`graph_analysis`):** in-memory NetworkX MultiDiGraph built from scoped SQL rows. Edge
+types: `owns` (customer→account), `transferred_to` (account→account via `counterparty_account_id`),
+`used_device` (account→device), `contacted_counterparty` (account→counterparty). Operations:
+`shared_device`, `circular_transfers`, `two_hop_exposure`, `connected_accounts`. Empty scope yields
+an empty result with `EMPTY_GRAPH_SCOPE` (no silent full-dataset scan). Disabled → `SKIPPED` /
+`GRAPH_DISABLED`.
+
+**Retrieval (`retrieval`):** committed illustrative policy excerpts under
+`config/policy/corpus/policy_excerpts.v1.json` with metadata `doc_id`, `title`, `source_url`,
+`publication_date`, `jurisdiction`, `section`, `text`. Indexed with deterministic
+`HashingVectorizer` embeddings into ChromaDB when available (else local sklearn cosine index under
+the same persist dir). Operation `search_policy` returns snippets + metadata +
+`POLICY_CONTEXT_ONLY` warning. Retrieved text is reviewer context only — it must not override
+deterministic evidence or present legal conclusions. Disabled → `SKIPPED` / `RETRIEVAL_DISABLED`.
 
 Labeled NL fixtures: `backend/tests/fixtures/intent_queries.v1.json`. Offline metrics:
 `backend/evaluation/intent_evaluation.py` and `backend/evaluation/planner_evaluation.py` (never
@@ -279,9 +301,8 @@ fallback when no DB run exists.
 ### Tool and HTTP contracts
 
 Registered tools (common `ToolResult` envelope): `sql_lookup`, `feature_engineering`, `eda`,
-`anomaly_detection`, plus Phase 8 stubs `risk_classification` and `explanation` that return
-`SKIPPED` with `PHASE_8_NOT_IMPLEMENTED`. Graph nodes may also skip Phase 7 tools with
-`PHASE_7_NOT_IMPLEMENTED`.
+`anomaly_detection`, `graph_analysis`, `retrieval`, plus Phase 8 stubs `risk_classification` and
+`explanation` that return `SKIPPED` with `PHASE_8_NOT_IMPLEMENTED`.
 
 Workflow skip reasons include `DEPENDENCY_FAILED`, `DEPENDENCY_SKIPPED`, `NODE_TIMEOUT`, and
 tool-local reasons. Required-tool failure/skip yields `partial`/`failed`; optional failure

@@ -26,6 +26,7 @@ ScenarioType = Literal[
     "profile_deviation",
     "new_account",
     "high_risk_country",
+    "graph_relationship",
 ]
 
 

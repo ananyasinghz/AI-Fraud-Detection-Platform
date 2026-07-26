@@ -4,7 +4,7 @@
 
 **Status:** Authoritative implementation architecture  
 **Contract version:** `v1`  
-**Last reconciled:** 2026-07-25
+**Last reconciled:** 2026-07-26
 
 This workspace document records the implementation-relevant form of the user-supplied “Part 10 — Final Recommended Enterprise AI Architecture (Implementation Blueprint), Revision 2.” The strict Phase 0 contracts remain authoritative where the document's abbreviated JSON examples omitted safety fields: raw `AnalysisRequest` and parsed intent remain separate, plan dependencies use unique step IDs, and tool results retain operation, timestamp, evidence, error, and provenance fields. The required execution `route` is part of contract `v1`.
 
@@ -103,7 +103,8 @@ Produces concise natural-language explanations from verified evidence only. Dete
 - **Risk Consistency Verification:** independently reproduces/checks risk inputs, weights, caps, tiers, conflicts, and confidence before escalation.
 - **Escalation:** maps verified risk to monitor/review/report recommendations.
 - **Alert Lifecycle:** persists review/report outcomes with idempotent creation and append-only transitions.
-- **Graph/Policy Retrieval:** optional extensions, never fabricated when unavailable.
+- **Graph Analysis:** NetworkX MVP over scoped SQL relationships (shared device, cycles, two-hop).
+- **Policy Retrieval:** Chroma/local HashingVectorizer index over committed illustrative excerpts; context only.
 
 ## Data Boundaries
 

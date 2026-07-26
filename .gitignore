@@ -50,6 +50,7 @@ Credit-Card-Fraud-Detection/
 # Local services and LLM state
 chroma_db/
 .chroma/
+data/runtime/chroma_policy/
 .ollama/
 neo4j/data/
 neo4j/logs/

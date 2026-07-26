@@ -1,6 +1,6 @@
 # Evaluation
 
-**Status:** Phase 6 validated dynamic planner verified
+**Status:** Phase 7 relationship graph and policy retrieval verified
 
 ## Phase 1 Verification
 
@@ -112,7 +112,33 @@ Measured (`FRAUD_OLLAMA_ENABLED=false`, force fallback plans):
 
 These are fixture-regression metrics for the fallback planner path, not live Ollama planner quality.
 
-Current result: 232 tests passed with 90.67% branch-aware coverage. Importing the FastAPI app
+## Phase 7 Verification
+
+The Phase 7 suite adds coverage for:
+
+- NetworkX relationship graph built from scoped SQL (`owns`, `transferred_to`, `used_device`,
+  `contacted_counterparty`) with `shared_device`, `circular_transfers`, `two_hop_exposure`, and
+  `connected_accounts` operations
+- Empty-scope and disabled-flag honest skips (`EMPTY_GRAPH_SCOPE`, `GRAPH_DISABLED`,
+  `RETRIEVAL_DISABLED`) — no fabricated hits
+- Policy corpus load + deterministic HashingVectorizer retrieval (`search_policy`) with metadata
+  and `POLICY_CONTEXT_ONLY` disclaimer
+- Registry/workflow execution of graph + retrieval (no `PHASE_7_NOT_IMPLEMENTED`)
+- Deliberate seed relationships for shared device, circular transfers, and two-hop exposure;
+  gold fixture `backend/tests/fixtures/graph_relationships.v1.json` (eval-only)
+- Planner whitelist includes graph/retrieval; SQL-only “>$10,000” templates still exclude them;
+  entity/broad templates may include optional graph/retrieval steps (`required=false`)
+
+### Graph / retrieval smoke
+
+| Check | Result |
+|---|---|
+| Shared-device gold (seed 42) | recovered |
+| Circular-transfer gold (seed 42) | recovered |
+| Two-hop exposure gold (seed 42) | recovered |
+| Policy search for structuring/threshold query | ≥1 metadata-bearing hit |
+
+Current result: 243 tests passed with 90.20% branch-aware coverage. Importing the FastAPI app
 still does not load `backend.app.ml*` or `backend.evaluation*` (`scripts/verify_environment.py`).
 Ruff formatting/lint, strict mypy, and `alembic check` pass with no schema drift.
 
@@ -138,9 +164,11 @@ Random Forest is selected by validation PR-AUC, not test performance. Its low va
 
 ## Synthetic AML Track
 
-Seed `42` produces 58 customers, 59 effective-dated profiles, 58 accounts, 80 counterparties, 58 devices, and 1,158 transactions with runtime fingerprint:
+Seed `42` produces 64 customers, 65 effective-dated profiles, 64 accounts, 81 counterparties, 65 devices, and 1,164 transactions with runtime fingerprint:
 
-`861da8d8d4801e8cb625de1e76c5009d5fc15c9e460dbaa8414f4ce10cfb091c`
+`10864b4b2007711b3e3b3b2730dc0a32635c1401999e0578c18f943fed1de6ea`
+
+(Counts include Phase 7 deliberate graph-relationship customers/devices/transfers.)
 
 The generated catalog includes clean controls and nine injected scenario families. Phase 2
 provides independently callable features and rules, but this phase does not tune or report

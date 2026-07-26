@@ -59,6 +59,7 @@ def test_generation_is_deterministic_separated_and_complete(tmp_path: Path) -> N
         "profile_deviation",
         "new_account",
         "high_risk_country",
+        "graph_relationship",
     } == patterns
     control_targets = {
         signal.removeprefix("control_for_")
@@ -67,7 +68,7 @@ def test_generation_is_deterministic_separated_and_complete(tmp_path: Path) -> N
         for signal in annotation.expected_signals
         if signal.startswith("control_for_")
     }
-    assert control_targets == patterns - {"clean_control"}
+    assert control_targets == patterns - {"clean_control", "graph_relationship"}
     assert all(type(item.amount_minor) is int for item in first.runtime.transactions)
     assert all(not item.ml_eligible for item in first.runtime.transactions)
 

@@ -154,9 +154,13 @@ class _ScenarioBuilder:
         device_id: str | None = None,
         country: str = "US",
         counterparty_id: str | None = None,
+        counterparty_account_id: str | None = None,
     ) -> None:
         self._transaction_number += 1
         transaction_id = f"txn-{self.split}-{self.seed}-{self._transaction_number:06d}"
+        resolved_cp_account = counterparty_account_id
+        if resolved_cp_account is None and counterparty_id is not None:
+            resolved_cp_account = f"ext-{counterparty_id}"
         self.transactions.append(
             TransactionSeed.model_validate(
                 {
@@ -172,9 +176,7 @@ class _ScenarioBuilder:
                     "channel": channel,
                     "country": country,
                     "counterparty_id": counterparty_id,
-                    "counterparty_account_id": (
-                        f"ext-{counterparty_id}" if counterparty_id else None
-                    ),
+                    "counterparty_account_id": resolved_cp_account,
                     "device_id": device_id,
                 }
             )
@@ -541,6 +543,124 @@ def _generate_high_risk_country(builder: _ScenarioBuilder, index: int) -> None:
     )
 
 
+def _generate_graph_relationships(builder: _ScenarioBuilder) -> None:
+    """Deliberate shared-device, circular transfer, and two-hop gold relationships."""
+    shared_device_id = f"dev-graph-shared-{builder.split}-{builder.seed}"
+    builder.devices.append(
+        DeviceSeed.model_validate(
+            {
+                "device_id": shared_device_id,
+                "device_type": "mobile",
+                "first_seen_at": builder.as_of - timedelta(days=60),
+                "last_seen_at": builder.as_of - timedelta(days=1),
+            }
+        )
+    )
+    cust_a, acct_a, _ = builder.add_customer("graph-share-a")
+    cust_b, acct_b, _ = builder.add_customer("graph-share-b")
+    # Override per-customer devices by using the shared device on transactions only.
+    start = builder.as_of - timedelta(days=5)
+    builder.add_transaction(
+        customer_id=cust_a,
+        account_id=acct_a,
+        occurred_at=start,
+        amount_minor=12_000,
+        direction="debit",
+        transaction_type="card_purchase",
+        channel="mobile",
+        device_id=shared_device_id,
+    )
+    builder.add_transaction(
+        customer_id=cust_b,
+        account_id=acct_b,
+        occurred_at=start + timedelta(hours=3),
+        amount_minor=9_500,
+        direction="debit",
+        transaction_type="card_purchase",
+        channel="mobile",
+        device_id=shared_device_id,
+    )
+    builder.annotate(
+        key="graph-shared-device",
+        pattern="graph_relationship",
+        customer_id=cust_a,
+        window_from=start,
+        window_to=builder.as_of,
+        expected_signals=["shared_device", shared_device_id, cust_b],
+        notes="Two customers deliberately share one device for Phase 7 graph gold.",
+    )
+
+    cust_c, acct_c, device_c = builder.add_customer("graph-cycle-a")
+    cust_d, acct_d, device_d = builder.add_customer("graph-cycle-b")
+    builder.add_transaction(
+        customer_id=cust_c,
+        account_id=acct_c,
+        occurred_at=start + timedelta(days=1),
+        amount_minor=50_000,
+        direction="debit",
+        transaction_type="wire_transfer",
+        channel="online",
+        device_id=device_c,
+        counterparty_account_id=acct_d,
+    )
+    builder.add_transaction(
+        customer_id=cust_d,
+        account_id=acct_d,
+        occurred_at=start + timedelta(days=1, hours=2),
+        amount_minor=48_000,
+        direction="debit",
+        transaction_type="wire_transfer",
+        channel="online",
+        device_id=device_d,
+        counterparty_account_id=acct_c,
+    )
+    builder.annotate(
+        key="graph-circular",
+        pattern="graph_relationship",
+        customer_id=cust_c,
+        window_from=start,
+        window_to=builder.as_of,
+        expected_signals=["circular_transfers", acct_c, acct_d],
+        notes="Accounts deliberately transfer to each other for cycle detection.",
+    )
+
+    cust_e, acct_e, device_e = builder.add_customer("graph-hop-a")
+    cust_f, acct_f, device_f = builder.add_customer("graph-hop-b")
+    hop_cp = builder.add_counterparty("graph-hop-cp")
+    builder.add_transaction(
+        customer_id=cust_e,
+        account_id=acct_e,
+        occurred_at=start + timedelta(days=2),
+        amount_minor=22_000,
+        direction="debit",
+        transaction_type="wire_transfer",
+        channel="online",
+        device_id=device_e,
+        counterparty_id=hop_cp,
+        counterparty_account_id=acct_f,
+    )
+    builder.add_transaction(
+        customer_id=cust_f,
+        account_id=acct_f,
+        occurred_at=start + timedelta(days=2, hours=4),
+        amount_minor=11_000,
+        direction="debit",
+        transaction_type="card_purchase",
+        channel="pos",
+        device_id=device_f,
+        counterparty_id=hop_cp,
+    )
+    builder.annotate(
+        key="graph-two-hop",
+        pattern="graph_relationship",
+        customer_id=cust_e,
+        window_from=start,
+        window_to=builder.as_of,
+        expected_signals=["two_hop_exposure", acct_f, hop_cp],
+        notes="Seed account reaches another account and counterparty within two hops.",
+    )
+
+
 _GENERATORS = {
     "structuring": _generate_structuring,
     "smurfing": _generate_smurfing,
@@ -587,6 +707,7 @@ def generate_scenarios(
             raise ValueError(f"unsupported scenario pattern: {pattern}")
         for index in range(config.scenarios_per_pattern):
             generator(builder, index)
+    _generate_graph_relationships(builder)
 
     run_id = f"aml-{config.generator_version}-{split}-{seed}"
     bundle = RuntimeBundle(

@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     planner_enabled: bool = False
     planner_version: str = Field(default="dynamic_planner.v1", min_length=1)
     planner_max_steps: int = Field(default=20, ge=1, le=20)
+    graph_enabled: bool = True
+    retrieval_enabled: bool = True
+    chroma_persist_dir: Path = Path("data/runtime/chroma_policy")
+    policy_corpus_path: Path = Path("config/policy/corpus/policy_excerpts.v1.json")
+    retrieval_top_k: int = Field(default=3, ge=1, le=20)
 
     @field_validator("api_prefix")
     @classmethod

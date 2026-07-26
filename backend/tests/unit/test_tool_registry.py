@@ -40,6 +40,8 @@ def test_registry_rejects_unknown_tool_and_operation(tmp_path: Path) -> None:
     with session_scope(session_factory(engine)) as session:
         context = _context(session)
         with pytest.raises(UnknownToolError):
+            TOOL_REGISTRY.dispatch(ToolName.VERIFICATION, "run", context=context)
+        with pytest.raises(UnknownToolOperationError):
             TOOL_REGISTRY.dispatch(ToolName.GRAPH_ANALYSIS, "run", context=context)
         with pytest.raises(UnknownToolOperationError):
             TOOL_REGISTRY.dispatch(ToolName.SQL_LOOKUP, "drop_table", context=context)
